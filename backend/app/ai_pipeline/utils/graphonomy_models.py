@@ -214,6 +214,4 @@ class ResNet101Backbone(nn.Module):
 
 
 # IterativeRefinementModule 클래스 제거 - step_01_human_parsing.py의 완전한 버전 사용
-
-
 # AdvancedGraphonomyResNetASPP 클래스 제거 - step_01_human_parsing.py의 완전한 버전 사용 

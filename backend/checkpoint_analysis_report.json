@@ -1,0 +1,1447 @@
+{
+  "analysis_time": "2025-08-08T00:28:30.558651",
+  "total_checkpoints": 117,
+  "patterns": {
+    "structure_types": {
+      "model_wrapper": {
+        "count": 2,
+        "examples": [
+          "ai_models/openpose.pth",
+          "ai_models/step_02_pose_estimation/yolov8m-pose.pt"
+        ],
+        "total_parameters": 0,
+        "avg_file_size": 25.417995929718018,
+        "avg_parameters": 0
+      },
+      "state_dict": {
+        "count": 9,
+        "examples": [
+          "ai_models/exp-schp-201908301523-atr.pth",
+          "ai_models/Self-Correction-Human-Parsing/exp-schp-201908261155-atr.pth",
+          "ai_models/step_06_virtual_fitting/ootdiffusion/checkpoints/humanparsing/exp-schp-201908301523-atr.pth",
+          "ai_models/step_01_human_parsing/exp-schp-201908261155-lip.pth",
+          "ai_models/step_01_human_parsing/exp-schp-201908301523-atr.pth",
+          "ai_models/Graphonomy/inference.pth",
+          "ai_models/step_02_pose_estimation/hrnet_w48_coco_384x288.pth",
+          "ai_models/step_02_pose_estimation/hrnet_w32_coco_256x192.pth",
+          "ai_models/step_02_pose_estimation/hrnet_w48_coco_256x192.pth"
+        ],
+        "total_parameters": 490132207,
+        "avg_file_size": 207.91560469733344,
+        "avg_parameters": 54459134
+      },
+      "unknown": {
+        "count": 43,
+        "examples": [
+          "ai_models/step_06_virtual_fitting/stable_diffusion_4.8gb.pth",
+          "ai_models/step_06_virtual_fitting/ootd_3.2gb.pth",
+          "ai_models/step_06_virtual_fitting/ultra_models/stable_diffusion_4.8gb.pth",
+          "ai_models/step_06_virtual_fitting/ultra_models/ootd_3.2gb.pth",
+          "ai_models/step_03_cloth_segmentation/u2net_official.pth",
+          "ai_models/checkpoints/stable_diffusion_4.8gb.pth",
+          "ai_models/checkpoints/ootd_3.2gb.pth",
+          "ai_models/step_01_human_parsing/graphonomy_root.pth",
+          "ai_models/step_01_human_parsing/graphonomy.pth",
+          "ai_models/step_08_quality_assessment/ViT-B-32.pt",
+          "ai_models/step_08_quality_assessment/ViT-L-14.pt",
+          "ai_models/step_06_virtual_fitting/ootdiffusion/checkpoints/ootd/ootd_hd/checkpoint-36000/unet_vton/diffusion_pytorch_model.safetensors",
+          "ai_models/step_06_virtual_fitting/ootdiffusion/checkpoints/ootd/ootd_hd/checkpoint-36000/unet_garm/diffusion_pytorch_model.safetensors",
+          "ai_models/step_06_virtual_fitting/ootdiffusion/checkpoints/ootd/ootd_dc/checkpoint-36000/unet_vton/diffusion_pytorch_model.safetensors",
+          "ai_models/step_06_virtual_fitting/ootdiffusion/checkpoints/ootd/ootd_dc/checkpoint-36000/unet_garm/diffusion_pytorch_model.safetensors",
+          "ai_models/step_06_virtual_fitting/ootdiffusion/unet/ootdiffusion/unet/diffusion_pytorch_model.safetensors",
+          "ai_models/step_06_virtual_fitting/unet/diffusion_pytorch_model.safetensors",
+          "ai_models/checkpoints/ootdiffusion/checkpoints/ootd/ootd_hd/checkpoint-36000/unet_vton/diffusion_pytorch_model.safetensors",
+          "ai_models/checkpoints/ootdiffusion/checkpoints/ootd/ootd_hd/checkpoint-36000/unet_garm/diffusion_pytorch_model.safetensors",
+          "ai_models/checkpoints/ootdiffusion/checkpoints/ootd/ootd_dc/checkpoint-36000/unet_vton/diffusion_pytorch_model.safetensors",
+          "ai_models/checkpoints/ootdiffusion/checkpoints/ootd/ootd_dc/checkpoint-36000/unet_garm/diffusion_pytorch_model.safetensors",
+          "ai_models/checkpoints/stable-diffusion-v1-5/v1-5-pruned-emaonly.safetensors",
+          "ai_models/checkpoints/stable-diffusion-v1-5/v1-5-pruned.safetensors",
+          "ai_models/checkpoints/stable-diffusion-v1-5/text_encoder/model.safetensors",
+          "ai_models/checkpoints/stable-diffusion-v1-5/text_encoder/model.fp16.safetensors",
+          "ai_models/checkpoints/stable-diffusion-v1-5/unet/diffusion_pytorch_model.safetensors",
+          "ai_models/checkpoints/stable-diffusion-v1-5/unet/diffusion_pytorch_model.non_ema.safetensors",
+          "ai_models/checkpoints/stable-diffusion-v1-5/unet/diffusion_pytorch_model.fp16.safetensors",
+          "ai_models/checkpoints/stable-diffusion-v1-5/safety_checker/model.safetensors",
+          "ai_models/checkpoints/stable-diffusion-v1-5/safety_checker/model.fp16.safetensors",
+          "ai_models/checkpoints/stable-diffusion-v1-5/vae/diffusion_pytorch_model.safetensors",
+          "ai_models/checkpoints/stable-diffusion-v1-5/vae/diffusion_pytorch_model.fp16.safetensors",
+          "ai_models/step_04_geometric_matching/diffusion_pytorch_model.safetensors",
+          "ai_models/Graphonomy/model.safetensors",
+          "ai_models/step_02_pose_estimation/diffusion_pytorch_model.fp16.safetensors",
+          "ai_models/step_02_pose_estimation/ultra_models/diffusion_pytorch_model.safetensors",
+          "ai_models/step_05_cloth_warping/RealVisXL_V4.0.safetensors",
+          "ai_models/step_05_cloth_warping/safety_checker/model.fp16.safetensors",
+          "ai_models/experimental_models/sdxl_turbo_ultra/text_encoder_2/model.safetensors",
+          "ai_models/experimental_models/sdxl_turbo_ultra/text_encoder/model.safetensors",
+          "ai_models/experimental_models/sdxl_turbo_ultra/unet/diffusion_pytorch_model.fp16.safetensors",
+          "ai_models/experimental_models/controlnet_xl_canny/diffusion_pytorch_model.fp16.safetensors",
+          "ai_models/future_enhancements/face_enhancement/instantid_ultra/ControlNetModel/diffusion_pytorch_model.safetensors"
+        ],
+        "total_parameters": 0,
+        "avg_file_size": 2375.6676987270976,
+        "avg_parameters": 0
+      },
+      "custom_dict": {
+        "count": 63,
+        "examples": [
+          "ai_models/step_06_virtual_fitting/viton_hd_2.1gb.pth",
+          "ai_models/step_06_virtual_fitting/hrviton_final.pth",
+          "ai_models/step_06_virtual_fitting/validated_checkpoints/ootd_checkpoint.pth",
+          "ai_models/step_06_virtual_fitting/ootdiffusion/checkpoints/openpose/ckpts/body_pose_model.pth",
+          "ai_models/step_06_virtual_fitting/ultra_models/viton_hd_2.1gb.pth",
+          "ai_models/step_03_cloth_segmentation/u2net_fallback.pth",
+          "ai_models/step_03_cloth_segmentation/sam_vit_h_4b8939.pth",
+          "ai_models/step_03_cloth_segmentation/deeplabv3_resnet101_coco.pth",
+          "ai_models/step_03_cloth_segmentation/deeplabv3_resnet101_ultra.pth",
+          "ai_models/step_03_cloth_segmentation/sam_vit_l_0b3195.pth",
+          "ai_models/step_03_cloth_segmentation/u2net.pth",
+          "ai_models/checkpoints/viton_hd_2.1gb.pth",
+          "ai_models/step_04_geometric_matching/raft-things.pth",
+          "ai_models/step_04_geometric_matching/sam_vit_h_4b8939.pth",
+          "ai_models/step_04_geometric_matching/resnet101_geometric.pth",
+          "ai_models/step_04_geometric_matching/gmm_final.pth",
+          "ai_models/step_04_geometric_matching/resnet50_geometric_ultra.pth",
+          "ai_models/step_04_geometric_matching/efficientnet_b0_ultra.pth",
+          "ai_models/step_04_geometric_matching/tps_network.pth",
+          "ai_models/step_04_geometric_matching/RealESRGAN_x4plus.pth",
+          "ai_models/step_04_geometric_matching/models/raft-things.pth",
+          "ai_models/step_04_geometric_matching/models/raft-chairs.pth",
+          "ai_models/step_04_geometric_matching/models/raft-kitti.pth",
+          "ai_models/step_04_geometric_matching/models/raft-sintel.pth",
+          "ai_models/step_04_geometric_matching/models/raft-small.pth",
+          "ai_models/step_04_geometric_matching/ultra_models/sam_vit_h_4b8939.pth",
+          "ai_models/step_07_post_processing/densenet161_enhance.pth",
+          "ai_models/step_07_post_processing/mobilenet_v3_ultra.pth",
+          "ai_models/step_07_post_processing/GFPGAN.pth",
+          "ai_models/step_07_post_processing/resnet101_enhance_ultra.pth",
+          "ai_models/step_07_post_processing/RealESRGAN_x2plus.pth",
+          "ai_models/step_07_post_processing/ESRGAN_x8.pth",
+          "ai_models/step_07_post_processing/001_classicalSR_DIV2K_s48w8_SwinIR-M_x4.pth",
+          "ai_models/step_07_post_processing/swinir_real_sr_x4_large.pth",
+          "ai_models/step_07_post_processing/RealESRGAN_x4plus.pth",
+          "ai_models/step_07_post_processing/esrgan_x8_ultra/ESRGAN_x8.pth",
+          "ai_models/step_08_quality_assessment/clip_vit_b32.pth",
+          "ai_models/step_08_quality_assessment/alex.pth",
+          "ai_models/step_08_quality_assessment/lpips_alex.pth",
+          "ai_models/step_01_human_parsing/deeplabv3plus.pth",
+          "ai_models/step_01_human_parsing/graphonomy_fixed.pth",
+          "ai_models/step_01_human_parsing/ultra_models/deeplab_resnet101.pth",
+          "ai_models/step_01_human_parsing/ultra_models/fcn_resnet101_ultra.pth",
+          "ai_models/Graphonomy/rng_state.pth",
+          "ai_models/step_02_pose_estimation/body_pose_model.pth",
+          "ai_models/step_05_cloth_warping/tom_final.pth",
+          "ai_models/step_05_cloth_warping/viton_hd_warping.pth",
+          "ai_models/step_05_cloth_warping/tps_transformation.pth",
+          "ai_models/step_05_cloth_warping/gmm_final.pth",
+          "ai_models/step_05_cloth_warping/dpt_hybrid_midas.pth",
+          "ai_models/step_05_cloth_warping/vgg19_warping.pth",
+          "ai_models/step_05_cloth_warping/u2net_warping.pth",
+          "ai_models/step_05_cloth_warping/vgg16_warping_ultra.pth",
+          "ai_models/step_05_cloth_warping/densenet121_ultra.pth",
+          "ai_models/step_05_cloth_warping/tps_network.pth",
+          "ai_models/step_05_cloth_warping/RealESRGAN_x4plus.pth",
+          "ai_models/step_03_cloth_segmentation/mobile_sam_alternative.pt",
+          "ai_models/step_03_cloth_segmentation/mobile_sam.pt",
+          "ai_models/checkpoints/pose_estimation/dpt_large-501f0c75.pt",
+          "ai_models/checkpoints/pose_estimation/dpt_hybrid-midas-501f0c75.pt",
+          "ai_models/step_04_geometric_matching/ViT-L-14.pt",
+          "ai_models/Graphonomy/optimizer.pt",
+          "ai_models/Graphonomy/scheduler.pt"
+        ],
+        "total_parameters": 0,
+        "avg_file_size": 410.26511074247816,
+        "avg_parameters": 0
+      }
+    },
+    "architecture_patterns": {
+      "graphonomy": {
+        "count": 8,
+        "files": [
+          "ai_models/Self-Correction-Human-Parsing/exp-schp-201908261155-atr.pth",
+          "ai_models/step_06_virtual_fitting/ootdiffusion/checkpoints/humanparsing/exp-schp-201908301523-atr.pth",
+          "ai_models/step_01_human_parsing/exp-schp-201908261155-lip.pth",
+          "ai_models/step_01_human_parsing/exp-schp-201908301523-atr.pth",
+          "ai_models/Graphonomy/inference.pth",
+          "ai_models/step_02_pose_estimation/hrnet_w48_coco_384x288.pth",
+          "ai_models/step_02_pose_estimation/hrnet_w32_coco_256x192.pth",
+          "ai_models/step_02_pose_estimation/hrnet_w48_coco_256x192.pth"
+        ],
+        "structure_types": [
+          "state_dict"
+        ]
+      },
+      "deeplabv3plus": {
+        "count": 8,
+        "files": [
+          "ai_models/Self-Correction-Human-Parsing/exp-schp-201908261155-atr.pth",
+          "ai_models/step_06_virtual_fitting/ootdiffusion/checkpoints/humanparsing/exp-schp-201908301523-atr.pth",
+          "ai_models/step_01_human_parsing/exp-schp-201908261155-lip.pth",
+          "ai_models/step_01_human_parsing/exp-schp-201908301523-atr.pth",
+          "ai_models/Graphonomy/inference.pth",
+          "ai_models/step_02_pose_estimation/hrnet_w48_coco_384x288.pth",
+          "ai_models/step_02_pose_estimation/hrnet_w32_coco_256x192.pth",
+          "ai_models/step_02_pose_estimation/hrnet_w48_coco_256x192.pth"
+        ],
+        "structure_types": [
+          "state_dict"
+        ]
+      },
+      "sam": {
+        "count": 8,
+        "files": [
+          "ai_models/Self-Correction-Human-Parsing/exp-schp-201908261155-atr.pth",
+          "ai_models/step_06_virtual_fitting/ootdiffusion/checkpoints/humanparsing/exp-schp-201908301523-atr.pth",
+          "ai_models/step_01_human_parsing/exp-schp-201908261155-lip.pth",
+          "ai_models/step_01_human_parsing/exp-schp-201908301523-atr.pth",
+          "ai_models/Graphonomy/inference.pth",
+          "ai_models/step_02_pose_estimation/hrnet_w48_coco_384x288.pth",
+          "ai_models/step_02_pose_estimation/hrnet_w32_coco_256x192.pth",
+          "ai_models/step_02_pose_estimation/hrnet_w48_coco_256x192.pth"
+        ],
+        "structure_types": [
+          "state_dict"
+        ]
+      },
+      "hrnet": {
+        "count": 8,
+        "files": [
+          "ai_models/Self-Correction-Human-Parsing/exp-schp-201908261155-atr.pth",
+          "ai_models/step_06_virtual_fitting/ootdiffusion/checkpoints/humanparsing/exp-schp-201908301523-atr.pth",
+          "ai_models/step_01_human_parsing/exp-schp-201908261155-lip.pth",
+          "ai_models/step_01_human_parsing/exp-schp-201908301523-atr.pth",
+          "ai_models/Graphonomy/inference.pth",
+          "ai_models/step_02_pose_estimation/hrnet_w48_coco_384x288.pth",
+          "ai_models/step_02_pose_estimation/hrnet_w32_coco_256x192.pth",
+          "ai_models/step_02_pose_estimation/hrnet_w48_coco_256x192.pth"
+        ],
+        "structure_types": [
+          "state_dict"
+        ]
+      },
+      "u2net": {
+        "count": 3,
+        "files": [
+          "ai_models/step_02_pose_estimation/hrnet_w48_coco_384x288.pth",
+          "ai_models/step_02_pose_estimation/hrnet_w32_coco_256x192.pth",
+          "ai_models/step_02_pose_estimation/hrnet_w48_coco_256x192.pth"
+        ],
+        "structure_types": [
+          "state_dict"
+        ]
+      },
+      "swinir": {
+        "count": 3,
+        "files": [
+          "ai_models/step_02_pose_estimation/hrnet_w48_coco_384x288.pth",
+          "ai_models/step_02_pose_estimation/hrnet_w32_coco_256x192.pth",
+          "ai_models/step_02_pose_estimation/hrnet_w48_coco_256x192.pth"
+        ],
+        "structure_types": [
+          "state_dict"
+        ]
+      }
+    },
+    "common_issues": {},
+    "recommendations": {}
+  },
+  "detailed_results": {
+    "ai_models/openpose.pth": {
+      "file_size_mb": 0.03664398193359375,
+      "structure_type": "model_wrapper",
+      "total_parameters": 0,
+      "architecture_hints": [],
+      "issues": [],
+      "recommendations": [
+        "model 키가 있는 래퍼 구조"
+      ]
+    },
+    "ai_models/exp-schp-201908301523-atr.pth": {
+      "file_size_mb": 0.194610595703125,
+      "structure_type": "state_dict",
+      "total_parameters": 0,
+      "architecture_hints": [],
+      "issues": [],
+      "recommendations": []
+    },
+    "ai_models/Self-Correction-Human-Parsing/exp-schp-201908261155-atr.pth": {
+      "file_size_mb": 255.05565357208252,
+      "structure_type": "state_dict",
+      "total_parameters": 66837428,
+      "architecture_hints": [
+        "graphonomy (매칭: 1개)",
+        "deeplabv3plus (매칭: 1개)",
+        "sam (매칭: 1개)",
+        "hrnet (매칭: 1개)"
+      ],
+      "issues": [],
+      "recommendations": []
+    },
+    "ai_models/step_06_virtual_fitting/stable_diffusion_4.8gb.pth": {
+      "file_size_mb": 3278.892078399658,
+      "structure_type": "unknown",
+      "total_parameters": 0,
+      "architecture_hints": [],
+      "issues": [
+        "체크포인트 로딩 실패: invalid load key, '\\xdc'."
+      ],
+      "recommendations": []
+    },
+    "ai_models/step_06_virtual_fitting/viton_hd_2.1gb.pth": {
+      "file_size_mb": 230.42139339447021,
+      "structure_type": "custom_dict",
+      "total_parameters": 0,
+      "architecture_hints": [],
+      "issues": [],
+      "recommendations": [
+        "커스텀 딕셔너리 구조"
+      ]
+    },
+    "ai_models/step_06_virtual_fitting/hrviton_final.pth": {
+      "file_size_mb": 230.42139339447021,
+      "structure_type": "custom_dict",
+      "total_parameters": 0,
+      "architecture_hints": [],
+      "issues": [],
+      "recommendations": [
+        "커스텀 딕셔너리 구조"
+      ]
+    },
+    "ai_models/step_06_virtual_fitting/ootd_3.2gb.pth": {
+      "file_size_mb": 3278.9360275268555,
+      "structure_type": "unknown",
+      "total_parameters": 0,
+      "architecture_hints": [],
+      "issues": [
+        "체크포인트 로딩 실패: invalid load key, '\\xe0'."
+      ],
+      "recommendations": []
+    },
+    "ai_models/step_06_virtual_fitting/validated_checkpoints/ootd_checkpoint.pth": {
+      "file_size_mb": 3279.0705919265747,
+      "structure_type": "custom_dict",
+      "total_parameters": 0,
+      "architecture_hints": [],
+      "issues": [],
+      "recommendations": [
+        "커스텀 딕셔너리 구조"
+      ]
+    },
+    "ai_models/step_06_virtual_fitting/ootdiffusion/checkpoints/openpose/ckpts/body_pose_model.pth": {
+      "file_size_mb": 199.57313060760498,
+      "structure_type": "custom_dict",
+      "total_parameters": 0,
+      "architecture_hints": [],
+      "issues": [],
+      "recommendations": [
+        "커스텀 딕셔너리 구조"
+      ]
+    },
+    "ai_models/step_06_virtual_fitting/ootdiffusion/checkpoints/humanparsing/exp-schp-201908301523-atr.pth": {
+      "file_size_mb": 255.05565357208252,
+      "structure_type": "state_dict",
+      "total_parameters": 66837428,
+      "architecture_hints": [
+        "graphonomy (매칭: 1개)",
+        "deeplabv3plus (매칭: 1개)",
+        "sam (매칭: 1개)",
+        "hrnet (매칭: 1개)"
+      ],
+      "issues": [],
+      "recommendations": []
+    },
+    "ai_models/step_06_virtual_fitting/ultra_models/stable_diffusion_4.8gb.pth": {
+      "file_size_mb": 3278.892078399658,
+      "structure_type": "unknown",
+      "total_parameters": 0,
+      "architecture_hints": [],
+      "issues": [
+        "체크포인트 로딩 실패: invalid load key, '\\xdc'."
+      ],
+      "recommendations": []
+    },
+    "ai_models/step_06_virtual_fitting/ultra_models/viton_hd_2.1gb.pth": {
+      "file_size_mb": 230.42139339447021,
+      "structure_type": "custom_dict",
+      "total_parameters": 0,
+      "architecture_hints": [],
+      "issues": [],
+      "recommendations": [
+        "커스텀 딕셔너리 구조"
+      ]
+    },
+    "ai_models/step_06_virtual_fitting/ultra_models/ootd_3.2gb.pth": {
+      "file_size_mb": 3278.9360275268555,
+      "structure_type": "unknown",
+      "total_parameters": 0,
+      "architecture_hints": [],
+      "issues": [
+        "체크포인트 로딩 실패: invalid load key, '\\xe0'."
+      ],
+      "recommendations": []
+    },
+    "ai_models/step_03_cloth_segmentation/u2net_fallback.pth": {
+      "file_size_mb": 527.7956781387329,
+      "structure_type": "custom_dict",
+      "total_parameters": 0,
+      "architecture_hints": [],
+      "issues": [],
+      "recommendations": [
+        "커스텀 딕셔너리 구조"
+      ]
+    },
+    "ai_models/step_03_cloth_segmentation/sam_vit_h_4b8939.pth": {
+      "file_size_mb": 2445.7463064193726,
+      "structure_type": "custom_dict",
+      "total_parameters": 0,
+      "architecture_hints": [],
+      "issues": [],
+      "recommendations": [
+        "커스텀 딕셔너리 구조"
+      ]
+    },
+    "ai_models/step_03_cloth_segmentation/deeplabv3_resnet101_coco.pth": {
+      "file_size_mb": 233.21679973602295,
+      "structure_type": "custom_dict",
+      "total_parameters": 0,
+      "architecture_hints": [],
+      "issues": [],
+      "recommendations": [
+        "커스텀 딕셔너리 구조"
+      ]
+    },
+    "ai_models/step_03_cloth_segmentation/u2net_official.pth": {
+      "file_size_mb": 0.0022592544555664062,
+      "structure_type": "unknown",
+      "total_parameters": 0,
+      "architecture_hints": [],
+      "issues": [
+        "체크포인트 로딩 실패: invalid load key, '<'."
+      ],
+      "recommendations": []
+    },
+    "ai_models/step_03_cloth_segmentation/deeplabv3_resnet101_ultra.pth": {
+      "file_size_mb": 233.21679973602295,
+      "structure_type": "custom_dict",
+      "total_parameters": 0,
+      "architecture_hints": [],
+      "issues": [],
+      "recommendations": [
+        "커스텀 딕셔너리 구조"
+      ]
+    },
+    "ai_models/step_03_cloth_segmentation/sam_vit_l_0b3195.pth": {
+      "file_size_mb": 1191.6395254135132,
+      "structure_type": "custom_dict",
+      "total_parameters": 0,
+      "architecture_hints": [],
+      "issues": [],
+      "recommendations": [
+        "커스텀 딕셔너리 구조"
+      ]
+    },
+    "ai_models/step_03_cloth_segmentation/u2net.pth": {
+      "file_size_mb": 527.7956781387329,
+      "structure_type": "custom_dict",
+      "total_parameters": 0,
+      "architecture_hints": [],
+      "issues": [],
+      "recommendations": [
+        "커스텀 딕셔너리 구조"
+      ]
+    },
+    "ai_models/checkpoints/stable_diffusion_4.8gb.pth": {
+      "file_size_mb": 3278.892078399658,
+      "structure_type": "unknown",
+      "total_parameters": 0,
+      "architecture_hints": [],
+      "issues": [
+        "체크포인트 로딩 실패: invalid load key, '\\xdc'."
+      ],
+      "recommendations": []
+    },
+    "ai_models/checkpoints/viton_hd_2.1gb.pth": {
+      "file_size_mb": 230.42139339447021,
+      "structure_type": "custom_dict",
+      "total_parameters": 0,
+      "architecture_hints": [],
+      "issues": [],
+      "recommendations": [
+        "커스텀 딕셔너리 구조"
+      ]
+    },
+    "ai_models/checkpoints/ootd_3.2gb.pth": {
+      "file_size_mb": 3278.9360275268555,
+      "structure_type": "unknown",
+      "total_parameters": 0,
+      "architecture_hints": [],
+      "issues": [
+        "체크포인트 로딩 실패: invalid load key, '\\xe0'."
+      ],
+      "recommendations": []
+    },
+    "ai_models/step_04_geometric_matching/raft-things.pth": {
+      "file_size_mb": 548.0597839355469,
+      "structure_type": "custom_dict",
+      "total_parameters": 0,
+      "architecture_hints": [],
+      "issues": [],
+      "recommendations": [
+        "커스텀 딕셔너리 구조"
+      ]
+    },
+    "ai_models/step_04_geometric_matching/sam_vit_h_4b8939.pth": {
+      "file_size_mb": 2445.7463064193726,
+      "structure_type": "custom_dict",
+      "total_parameters": 0,
+      "architecture_hints": [],
+      "issues": [],
+      "recommendations": [
+        "커스텀 딕셔너리 구조"
+      ]
+    },
+    "ai_models/step_04_geometric_matching/resnet101_geometric.pth": {
+      "file_size_mb": 527.8031978607178,
+      "structure_type": "custom_dict",
+      "total_parameters": 0,
+      "architecture_hints": [],
+      "issues": [],
+      "recommendations": [
+        "커스텀 딕셔너리 구조"
+      ]
+    },
+    "ai_models/step_04_geometric_matching/gmm_final.pth": {
+      "file_size_mb": 1312.617956161499,
+      "structure_type": "custom_dict",
+      "total_parameters": 0,
+      "architecture_hints": [],
+      "issues": [],
+      "recommendations": [
+        "커스텀 딕셔너리 구조"
+      ]
+    },
+    "ai_models/step_04_geometric_matching/resnet50_geometric_ultra.pth": {
+      "file_size_mb": 97.79625511169434,
+      "structure_type": "custom_dict",
+      "total_parameters": 0,
+      "architecture_hints": [],
+      "issues": [],
+      "recommendations": [
+        "커스텀 딕셔너리 구조"
+      ]
+    },
+    "ai_models/step_04_geometric_matching/efficientnet_b0_ultra.pth": {
+      "file_size_mb": 548.0597839355469,
+      "structure_type": "custom_dict",
+      "total_parameters": 0,
+      "architecture_hints": [],
+      "issues": [],
+      "recommendations": [
+        "커스텀 딕셔너리 구조"
+      ]
+    },
+    "ai_models/step_04_geometric_matching/tps_network.pth": {
+      "file_size_mb": 548.0512247085571,
+      "structure_type": "custom_dict",
+      "total_parameters": 0,
+      "architecture_hints": [],
+      "issues": [],
+      "recommendations": [
+        "커스텀 딕셔너리 구조"
+      ]
+    },
+    "ai_models/step_04_geometric_matching/RealESRGAN_x4plus.pth": {
+      "file_size_mb": 63.935269355773926,
+      "structure_type": "custom_dict",
+      "total_parameters": 0,
+      "architecture_hints": [],
+      "issues": [],
+      "recommendations": [
+        "커스텀 딕셔너리 구조"
+      ]
+    },
+    "ai_models/step_04_geometric_matching/models/raft-things.pth": {
+      "file_size_mb": 20.130157470703125,
+      "structure_type": "custom_dict",
+      "total_parameters": 0,
+      "architecture_hints": [],
+      "issues": [],
+      "recommendations": [
+        "커스텀 딕셔너리 구조"
+      ]
+    },
+    "ai_models/step_04_geometric_matching/models/raft-chairs.pth": {
+      "file_size_mb": 20.130157470703125,
+      "structure_type": "custom_dict",
+      "total_parameters": 0,
+      "architecture_hints": [],
+      "issues": [],
+      "recommendations": [
+        "커스텀 딕셔너리 구조"
+      ]
+    },
+    "ai_models/step_04_geometric_matching/models/raft-kitti.pth": {
+      "file_size_mb": 20.130157470703125,
+      "structure_type": "custom_dict",
+      "total_parameters": 0,
+      "architecture_hints": [],
+      "issues": [],
+      "recommendations": [
+        "커스텀 딕셔너리 구조"
+      ]
+    },
+    "ai_models/step_04_geometric_matching/models/raft-sintel.pth": {
+      "file_size_mb": 20.130157470703125,
+      "structure_type": "custom_dict",
+      "total_parameters": 0,
+      "architecture_hints": [],
+      "issues": [],
+      "recommendations": [
+        "커스텀 딕셔너리 구조"
+      ]
+    },
+    "ai_models/step_04_geometric_matching/models/raft-small.pth": {
+      "file_size_mb": 3.8002147674560547,
+      "structure_type": "custom_dict",
+      "total_parameters": 0,
+      "architecture_hints": [],
+      "issues": [],
+      "recommendations": [
+        "커스텀 딕셔너리 구조"
+      ]
+    },
+    "ai_models/step_04_geometric_matching/ultra_models/sam_vit_h_4b8939.pth": {
+      "file_size_mb": 357.668288230896,
+      "structure_type": "custom_dict",
+      "total_parameters": 0,
+      "architecture_hints": [],
+      "issues": [],
+      "recommendations": [
+        "커스텀 딕셔너리 구조"
+      ]
+    },
+    "ai_models/step_07_post_processing/densenet161_enhance.pth": {
+      "file_size_mb": 110.36948204040527,
+      "structure_type": "custom_dict",
+      "total_parameters": 0,
+      "architecture_hints": [],
+      "issues": [],
+      "recommendations": [
+        "커스텀 딕셔너리 구조"
+      ]
+    },
+    "ai_models/step_07_post_processing/mobilenet_v3_ultra.pth": {
+      "file_size_mb": 21.11079978942871,
+      "structure_type": "custom_dict",
+      "total_parameters": 0,
+      "architecture_hints": [],
+      "issues": [],
+      "recommendations": [
+        "커스텀 딕셔너리 구조"
+      ]
+    },
+    "ai_models/step_07_post_processing/GFPGAN.pth": {
+      "file_size_mb": 332.4822177886963,
+      "structure_type": "custom_dict",
+      "total_parameters": 0,
+      "architecture_hints": [],
+      "issues": [],
+      "recommendations": [
+        "커스텀 딕셔너리 구조"
+      ]
+    },
+    "ai_models/step_07_post_processing/resnet101_enhance_ultra.pth": {
+      "file_size_mb": 170.5408763885498,
+      "structure_type": "custom_dict",
+      "total_parameters": 0,
+      "architecture_hints": [],
+      "issues": [],
+      "recommendations": [
+        "커스텀 딕셔너리 구조"
+      ]
+    },
+    "ai_models/step_07_post_processing/RealESRGAN_x2plus.pth": {
+      "file_size_mb": 63.955044746398926,
+      "structure_type": "custom_dict",
+      "total_parameters": 0,
+      "architecture_hints": [],
+      "issues": [],
+      "recommendations": [
+        "커스텀 딕셔너리 구조"
+      ]
+    },
+    "ai_models/step_07_post_processing/ESRGAN_x8.pth": {
+      "file_size_mb": 4.658804893493652,
+      "structure_type": "custom_dict",
+      "total_parameters": 0,
+      "architecture_hints": [],
+      "issues": [],
+      "recommendations": [
+        "커스텀 딕셔너리 구조"
+      ]
+    },
+    "ai_models/step_07_post_processing/001_classicalSR_DIV2K_s48w8_SwinIR-M_x4.pth": {
+      "file_size_mb": 56.849955558776855,
+      "structure_type": "custom_dict",
+      "total_parameters": 0,
+      "architecture_hints": [],
+      "issues": [],
+      "recommendations": [
+        "커스텀 딕셔너리 구조"
+      ]
+    },
+    "ai_models/step_07_post_processing/swinir_real_sr_x4_large.pth": {
+      "file_size_mb": 135.87373638153076,
+      "structure_type": "custom_dict",
+      "total_parameters": 0,
+      "architecture_hints": [],
+      "issues": [],
+      "recommendations": [
+        "커스텀 딕셔너리 구조"
+      ]
+    },
+    "ai_models/step_07_post_processing/RealESRGAN_x4plus.pth": {
+      "file_size_mb": 63.935269355773926,
+      "structure_type": "custom_dict",
+      "total_parameters": 0,
+      "architecture_hints": [],
+      "issues": [],
+      "recommendations": [
+        "커스텀 딕셔너리 구조"
+      ]
+    },
+    "ai_models/step_07_post_processing/esrgan_x8_ultra/ESRGAN_x8.pth": {
+      "file_size_mb": 135.87373638153076,
+      "structure_type": "custom_dict",
+      "total_parameters": 0,
+      "architecture_hints": [],
+      "issues": [],
+      "recommendations": [
+        "커스텀 딕셔너리 구조"
+      ]
+    },
+    "ai_models/step_08_quality_assessment/clip_vit_b32.pth": {
+      "file_size_mb": 577.2085866928101,
+      "structure_type": "custom_dict",
+      "total_parameters": 0,
+      "architecture_hints": [],
+      "issues": [],
+      "recommendations": [
+        "커스텀 딕셔너리 구조"
+      ]
+    },
+    "ai_models/step_08_quality_assessment/alex.pth": {
+      "file_size_mb": 0.006951332092285156,
+      "structure_type": "custom_dict",
+      "total_parameters": 0,
+      "architecture_hints": [],
+      "issues": [],
+      "recommendations": [
+        "커스텀 딕셔너리 구조"
+      ]
+    },
+    "ai_models/step_08_quality_assessment/lpips_alex.pth": {
+      "file_size_mb": 233.08690357208252,
+      "structure_type": "custom_dict",
+      "total_parameters": 0,
+      "architecture_hints": [],
+      "issues": [],
+      "recommendations": [
+        "커스텀 딕셔너리 구조"
+      ]
+    },
+    "ai_models/step_01_human_parsing/deeplabv3plus.pth": {
+      "file_size_mb": 233.32293128967285,
+      "structure_type": "custom_dict",
+      "total_parameters": 0,
+      "architecture_hints": [],
+      "issues": [],
+      "recommendations": [
+        "커스텀 딕셔너리 구조"
+      ]
+    },
+    "ai_models/step_01_human_parsing/graphonomy_fixed.pth": {
+      "file_size_mb": 255.15043830871582,
+      "structure_type": "custom_dict",
+      "total_parameters": 0,
+      "architecture_hints": [],
+      "issues": [],
+      "recommendations": [
+        "커스텀 딕셔너리 구조"
+      ]
+    },
+    "ai_models/step_01_human_parsing/graphonomy_root.pth": {
+      "file_size_mb": 1172.9622974395752,
+      "structure_type": "unknown",
+      "total_parameters": 0,
+      "architecture_hints": [],
+      "issues": [
+        "체크포인트 로딩 실패: Expected hasRecord(\"version\") to be true, but got false.  (Could this error message be improved?  If so, please report an enhancement request to PyTorch.)"
+      ],
+      "recommendations": []
+    },
+    "ai_models/step_01_human_parsing/exp-schp-201908261155-lip.pth": {
+      "file_size_mb": 255.05957508087158,
+      "structure_type": "state_dict",
+      "total_parameters": 66838456,
+      "architecture_hints": [
+        "graphonomy (매칭: 1개)",
+        "deeplabv3plus (매칭: 1개)",
+        "sam (매칭: 1개)",
+        "hrnet (매칭: 1개)"
+      ],
+      "issues": [],
+      "recommendations": []
+    },
+    "ai_models/step_01_human_parsing/graphonomy.pth": {
+      "file_size_mb": 1172.9622974395752,
+      "structure_type": "unknown",
+      "total_parameters": 0,
+      "architecture_hints": [],
+      "issues": [
+        "체크포인트 로딩 실패: Expected hasRecord(\"version\") to be true, but got false.  (Could this error message be improved?  If so, please report an enhancement request to PyTorch.)"
+      ],
+      "recommendations": []
+    },
+    "ai_models/step_01_human_parsing/exp-schp-201908301523-atr.pth": {
+      "file_size_mb": 255.05957508087158,
+      "structure_type": "state_dict",
+      "total_parameters": 66838456,
+      "architecture_hints": [
+        "graphonomy (매칭: 1개)",
+        "deeplabv3plus (매칭: 1개)",
+        "sam (매칭: 1개)",
+        "hrnet (매칭: 1개)"
+      ],
+      "issues": [],
+      "recommendations": []
+    },
+    "ai_models/step_01_human_parsing/ultra_models/deeplab_resnet101.pth": {
+      "file_size_mb": 233.21679973602295,
+      "structure_type": "custom_dict",
+      "total_parameters": 0,
+      "architecture_hints": [],
+      "issues": [],
+      "recommendations": [
+        "커스텀 딕셔너리 구조"
+      ]
+    },
+    "ai_models/step_01_human_parsing/ultra_models/fcn_resnet101_ultra.pth": {
+      "file_size_mb": 207.8078327178955,
+      "structure_type": "custom_dict",
+      "total_parameters": 0,
+      "architecture_hints": [],
+      "issues": [],
+      "recommendations": [
+        "커스텀 딕셔너리 구조"
+      ]
+    },
+    "ai_models/Graphonomy/rng_state.pth": {
+      "file_size_mb": 0.013899803161621094,
+      "structure_type": "custom_dict",
+      "total_parameters": 0,
+      "architecture_hints": [],
+      "issues": [],
+      "recommendations": [
+        "커스텀 딕셔너리 구조"
+      ]
+    },
+    "ai_models/Graphonomy/inference.pth": {
+      "file_size_mb": 255.05957508087158,
+      "structure_type": "state_dict",
+      "total_parameters": 66838456,
+      "architecture_hints": [
+        "graphonomy (매칭: 1개)",
+        "deeplabv3plus (매칭: 1개)",
+        "sam (매칭: 1개)",
+        "hrnet (매칭: 1개)"
+      ],
+      "issues": [],
+      "recommendations": []
+    },
+    "ai_models/step_02_pose_estimation/body_pose_model.pth": {
+      "file_size_mb": 97.78054523468018,
+      "structure_type": "custom_dict",
+      "total_parameters": 0,
+      "architecture_hints": [],
+      "issues": [],
+      "recommendations": [
+        "커스텀 딕셔너리 구조"
+      ]
+    },
+    "ai_models/step_02_pose_estimation/hrnet_w48_coco_384x288.pth": {
+      "file_size_mb": 243.19800567626953,
+      "structure_type": "state_dict",
+      "total_parameters": 63675621,
+      "architecture_hints": [
+        "graphonomy (매칭: 1개)",
+        "u2net (매칭: 3개)",
+        "deeplabv3plus (매칭: 1개)",
+        "sam (매칭: 1개)",
+        "swinir (매칭: 1개)",
+        "hrnet (매칭: 2개)"
+      ],
+      "issues": [],
+      "recommendations": []
+    },
+    "ai_models/step_02_pose_estimation/hrnet_w32_coco_256x192.pth": {
+      "file_size_mb": 109.35972881317139,
+      "structure_type": "state_dict",
+      "total_parameters": 28590741,
+      "architecture_hints": [
+        "graphonomy (매칭: 1개)",
+        "u2net (매칭: 3개)",
+        "deeplabv3plus (매칭: 1개)",
+        "sam (매칭: 1개)",
+        "swinir (매칭: 1개)",
+        "hrnet (매칭: 2개)"
+      ],
+      "issues": [],
+      "recommendations": []
+    },
+    "ai_models/step_02_pose_estimation/hrnet_w48_coco_256x192.pth": {
+      "file_size_mb": 243.19806480407715,
+      "structure_type": "state_dict",
+      "total_parameters": 63675621,
+      "architecture_hints": [
+        "graphonomy (매칭: 1개)",
+        "u2net (매칭: 3개)",
+        "deeplabv3plus (매칭: 1개)",
+        "sam (매칭: 1개)",
+        "swinir (매칭: 1개)",
+        "hrnet (매칭: 2개)"
+      ],
+      "issues": [],
+      "recommendations": []
+    },
+    "ai_models/step_05_cloth_warping/tom_final.pth": {
+      "file_size_mb": 83.26171875,
+      "structure_type": "custom_dict",
+      "total_parameters": 0,
+      "architecture_hints": [],
+      "issues": [],
+      "recommendations": [
+        "커스텀 딕셔너리 구조"
+      ]
+    },
+    "ai_models/step_05_cloth_warping/viton_hd_warping.pth": {
+      "file_size_mb": 1312.617956161499,
+      "structure_type": "custom_dict",
+      "total_parameters": 0,
+      "architecture_hints": [],
+      "issues": [],
+      "recommendations": [
+        "커스텀 딕셔너리 구조"
+      ]
+    },
+    "ai_models/step_05_cloth_warping/tps_transformation.pth": {
+      "file_size_mb": 469.9308223724365,
+      "structure_type": "custom_dict",
+      "total_parameters": 0,
+      "architecture_hints": [],
+      "issues": [],
+      "recommendations": [
+        "커스텀 딕셔너리 구조"
+      ]
+    },
+    "ai_models/step_05_cloth_warping/gmm_final.pth": {
+      "file_size_mb": 0.3025331497192383,
+      "structure_type": "custom_dict",
+      "total_parameters": 0,
+      "architecture_hints": [],
+      "issues": [],
+      "recommendations": [
+        "커스텀 딕셔너리 구조"
+      ]
+    },
+    "ai_models/step_05_cloth_warping/dpt_hybrid_midas.pth": {
+      "file_size_mb": 469.9308223724365,
+      "structure_type": "custom_dict",
+      "total_parameters": 0,
+      "architecture_hints": [],
+      "issues": [],
+      "recommendations": [
+        "커스텀 딕셔너리 구조"
+      ]
+    },
+    "ai_models/step_05_cloth_warping/vgg19_warping.pth": {
+      "file_size_mb": 548.0512247085571,
+      "structure_type": "custom_dict",
+      "total_parameters": 0,
+      "architecture_hints": [],
+      "issues": [],
+      "recommendations": [
+        "커스텀 딕셔너리 구조"
+      ]
+    },
+    "ai_models/step_05_cloth_warping/u2net_warping.pth": {
+      "file_size_mb": 38.84146308898926,
+      "structure_type": "custom_dict",
+      "total_parameters": 0,
+      "architecture_hints": [],
+      "issues": [],
+      "recommendations": [
+        "커스텀 딕셔너리 구조"
+      ]
+    },
+    "ai_models/step_05_cloth_warping/vgg16_warping_ultra.pth": {
+      "file_size_mb": 527.7956781387329,
+      "structure_type": "custom_dict",
+      "total_parameters": 0,
+      "architecture_hints": [],
+      "issues": [],
+      "recommendations": [
+        "커스텀 딕셔너리 구조"
+      ]
+    },
+    "ai_models/step_05_cloth_warping/densenet121_ultra.pth": {
+      "file_size_mb": 30.84464454650879,
+      "structure_type": "custom_dict",
+      "total_parameters": 0,
+      "architecture_hints": [],
+      "issues": [],
+      "recommendations": [
+        "커스텀 딕셔너리 구조"
+      ]
+    },
+    "ai_models/step_05_cloth_warping/tps_network.pth": {
+      "file_size_mb": 1.453495979309082,
+      "structure_type": "custom_dict",
+      "total_parameters": 0,
+      "architecture_hints": [],
+      "issues": [],
+      "recommendations": [
+        "커스텀 딕셔너리 구조"
+      ]
+    },
+    "ai_models/step_05_cloth_warping/RealESRGAN_x4plus.pth": {
+      "file_size_mb": 63.935269355773926,
+      "structure_type": "custom_dict",
+      "total_parameters": 0,
+      "architecture_hints": [],
+      "issues": [],
+      "recommendations": [
+        "커스텀 딕셔너리 구조"
+      ]
+    },
+    "ai_models/step_03_cloth_segmentation/mobile_sam_alternative.pt": {
+      "file_size_mb": 357.668288230896,
+      "structure_type": "custom_dict",
+      "total_parameters": 0,
+      "architecture_hints": [],
+      "issues": [],
+      "recommendations": [
+        "커스텀 딕셔너리 구조"
+      ]
+    },
+    "ai_models/step_03_cloth_segmentation/mobile_sam.pt": {
+      "file_size_mb": 357.668288230896,
+      "structure_type": "custom_dict",
+      "total_parameters": 0,
+      "architecture_hints": [],
+      "issues": [],
+      "recommendations": [
+        "커스텀 딕셔너리 구조"
+      ]
+    },
+    "ai_models/checkpoints/pose_estimation/dpt_large-501f0c75.pt": {
+      "file_size_mb": 1304.227032661438,
+      "structure_type": "custom_dict",
+      "total_parameters": 0,
+      "architecture_hints": [],
+      "issues": [],
+      "recommendations": [
+        "커스텀 딕셔너리 구조"
+      ]
+    },
+    "ai_models/checkpoints/pose_estimation/dpt_hybrid-midas-501f0c75.pt": {
+      "file_size_mb": 466.9650926589966,
+      "structure_type": "custom_dict",
+      "total_parameters": 0,
+      "architecture_hints": [],
+      "issues": [],
+      "recommendations": [
+        "커스텀 딕셔너리 구조"
+      ]
+    },
+    "ai_models/step_04_geometric_matching/ViT-L-14.pt": {
+      "file_size_mb": 577.2085866928101,
+      "structure_type": "custom_dict",
+      "total_parameters": 0,
+      "architecture_hints": [],
+      "issues": [],
+      "recommendations": [
+        "커스텀 딕셔너리 구조"
+      ]
+    },
+    "ai_models/step_08_quality_assessment/ViT-B-32.pt": {
+      "file_size_mb": 337.5783176422119,
+      "structure_type": "unknown",
+      "total_parameters": 0,
+      "architecture_hints": [],
+      "issues": [
+        "예상하지 못한 타입: <class 'torch.jit._script.RecursiveScriptModule'>"
+      ],
+      "recommendations": []
+    },
+    "ai_models/step_08_quality_assessment/ViT-L-14.pt": {
+      "file_size_mb": 889.5570125579834,
+      "structure_type": "unknown",
+      "total_parameters": 0,
+      "architecture_hints": [],
+      "issues": [
+        "예상하지 못한 타입: <class 'torch.jit._script.RecursiveScriptModule'>"
+      ],
+      "recommendations": []
+    },
+    "ai_models/Graphonomy/optimizer.pt": {
+      "file_size_mb": 208.95465564727783,
+      "structure_type": "custom_dict",
+      "total_parameters": 0,
+      "architecture_hints": [],
+      "issues": [],
+      "recommendations": [
+        "커스텀 딕셔너리 구조"
+      ]
+    },
+    "ai_models/Graphonomy/scheduler.pt": {
+      "file_size_mb": 0.0005979537963867188,
+      "structure_type": "custom_dict",
+      "total_parameters": 0,
+      "architecture_hints": [],
+      "issues": [],
+      "recommendations": [
+        "커스텀 딕셔너리 구조"
+      ]
+    },
+    "ai_models/step_02_pose_estimation/yolov8m-pose.pt": {
+      "file_size_mb": 50.79934787750244,
+      "structure_type": "model_wrapper",
+      "total_parameters": 0,
+      "architecture_hints": [],
+      "issues": [],
+      "recommendations": [
+        "model 키가 있는 래퍼 구조"
+      ]
+    },
+    "ai_models/step_06_virtual_fitting/ootdiffusion/checkpoints/ootd/ootd_hd/checkpoint-36000/unet_vton/diffusion_pytorch_model.safetensors": {
+      "file_size_mb": 3278.9360275268555,
+      "structure_type": "unknown",
+      "total_parameters": 0,
+      "architecture_hints": [],
+      "issues": [
+        "체크포인트 로딩 실패: invalid load key, '\\xe0'."
+      ],
+      "recommendations": []
+    },
+    "ai_models/step_06_virtual_fitting/ootdiffusion/checkpoints/ootd/ootd_hd/checkpoint-36000/unet_garm/diffusion_pytorch_model.safetensors": {
+      "file_size_mb": 3278.892074584961,
+      "structure_type": "unknown",
+      "total_parameters": 0,
+      "architecture_hints": [],
+      "issues": [
+        "체크포인트 로딩 실패: invalid load key, '\\xd8'."
+      ],
+      "recommendations": []
+    },
+    "ai_models/step_06_virtual_fitting/ootdiffusion/checkpoints/ootd/ootd_dc/checkpoint-36000/unet_vton/diffusion_pytorch_model.safetensors": {
+      "file_size_mb": 3278.9360275268555,
+      "structure_type": "unknown",
+      "total_parameters": 0,
+      "architecture_hints": [],
+      "issues": [
+        "체크포인트 로딩 실패: invalid load key, '\\xe0'."
+      ],
+      "recommendations": []
+    },
+    "ai_models/step_06_virtual_fitting/ootdiffusion/checkpoints/ootd/ootd_dc/checkpoint-36000/unet_garm/diffusion_pytorch_model.safetensors": {
+      "file_size_mb": 3278.892074584961,
+      "structure_type": "unknown",
+      "total_parameters": 0,
+      "architecture_hints": [],
+      "issues": [
+        "체크포인트 로딩 실패: invalid load key, '\\xd8'."
+      ],
+      "recommendations": []
+    },
+    "ai_models/step_06_virtual_fitting/ootdiffusion/unet/ootdiffusion/unet/diffusion_pytorch_model.safetensors": {
+      "file_size_mb": 3303.2670001983643,
+      "structure_type": "unknown",
+      "total_parameters": 0,
+      "architecture_hints": [],
+      "issues": [
+        "체크포인트 로딩 실패: Memo value not found at index 97"
+      ],
+      "recommendations": []
+    },
+    "ai_models/step_06_virtual_fitting/unet/diffusion_pytorch_model.safetensors": {
+      "file_size_mb": 3303.2670001983643,
+      "structure_type": "unknown",
+      "total_parameters": 0,
+      "architecture_hints": [],
+      "issues": [
+        "체크포인트 로딩 실패: Memo value not found at index 97"
+      ],
+      "recommendations": []
+    },
+    "ai_models/checkpoints/ootdiffusion/checkpoints/ootd/ootd_hd/checkpoint-36000/unet_vton/diffusion_pytorch_model.safetensors": {
+      "file_size_mb": 3278.9360275268555,
+      "structure_type": "unknown",
+      "total_parameters": 0,
+      "architecture_hints": [],
+      "issues": [
+        "체크포인트 로딩 실패: invalid load key, '\\xe0'."
+      ],
+      "recommendations": []
+    },
+    "ai_models/checkpoints/ootdiffusion/checkpoints/ootd/ootd_hd/checkpoint-36000/unet_garm/diffusion_pytorch_model.safetensors": {
+      "file_size_mb": 3278.892074584961,
+      "structure_type": "unknown",
+      "total_parameters": 0,
+      "architecture_hints": [],
+      "issues": [
+        "체크포인트 로딩 실패: invalid load key, '\\xd8'."
+      ],
+      "recommendations": []
+    },
+    "ai_models/checkpoints/ootdiffusion/checkpoints/ootd/ootd_dc/checkpoint-36000/unet_vton/diffusion_pytorch_model.safetensors": {
+      "file_size_mb": 3278.9360275268555,
+      "structure_type": "unknown",
+      "total_parameters": 0,
+      "architecture_hints": [],
+      "issues": [
+        "체크포인트 로딩 실패: invalid load key, '\\xe0'."
+      ],
+      "recommendations": []
+    },
+    "ai_models/checkpoints/ootdiffusion/checkpoints/ootd/ootd_dc/checkpoint-36000/unet_garm/diffusion_pytorch_model.safetensors": {
+      "file_size_mb": 3278.892074584961,
+      "structure_type": "unknown",
+      "total_parameters": 0,
+      "architecture_hints": [],
+      "issues": [
+        "체크포인트 로딩 실패: invalid load key, '\\xd8'."
+      ],
+      "recommendations": []
+    },
+    "ai_models/checkpoints/stable-diffusion-v1-5/v1-5-pruned-emaonly.safetensors": {
+      "file_size_mb": 4067.5604858398438,
+      "structure_type": "unknown",
+      "total_parameters": 0,
+      "architecture_hints": [],
+      "issues": [
+        "체크포인트 로딩 실패: invalid load key, '\\x1c'."
+      ],
+      "recommendations": []
+    },
+    "ai_models/checkpoints/stable-diffusion-v1-5/v1-5-pruned.safetensors": {
+      "file_size_mb": 7346.462522506714,
+      "structure_type": "unknown",
+      "total_parameters": 0,
+      "architecture_hints": [],
+      "issues": [
+        "체크포인트 로딩 실패: invalid load key, '\\xca'."
+      ],
+      "recommendations": []
+    },
+    "ai_models/checkpoints/stable-diffusion-v1-5/text_encoder/model.safetensors": {
+      "file_size_mb": 469.4613208770752,
+      "structure_type": "unknown",
+      "total_parameters": 0,
+      "architecture_hints": [],
+      "issues": [
+        "체크포인트 로딩 실패: invalid load key, '\"'."
+      ],
+      "recommendations": []
+    },
+    "ai_models/checkpoints/stable-diffusion-v1-5/text_encoder/model.fp16.safetensors": {
+      "file_size_mb": 234.74203491210938,
+      "structure_type": "unknown",
+      "total_parameters": 0,
+      "architecture_hints": [],
+      "issues": [
+        "체크포인트 로딩 실패: invalid load key, '\\xf0'."
+      ],
+      "recommendations": []
+    },
+    "ai_models/checkpoints/stable-diffusion-v1-5/unet/diffusion_pytorch_model.safetensors": {
+      "file_size_mb": 3278.892078399658,
+      "structure_type": "unknown",
+      "total_parameters": 0,
+      "architecture_hints": [],
+      "issues": [
+        "체크포인트 로딩 실패: invalid load key, '\\xdc'."
+      ],
+      "recommendations": []
+    },
+    "ai_models/checkpoints/stable-diffusion-v1-5/unet/diffusion_pytorch_model.non_ema.safetensors": {
+      "file_size_mb": 3278.892074584961,
+      "structure_type": "unknown",
+      "total_parameters": 0,
+      "architecture_hints": [],
+      "issues": [
+        "체크포인트 로딩 실패: invalid load key, '\\xd8'."
+      ],
+      "recommendations": []
+    },
+    "ai_models/checkpoints/stable-diffusion-v1-5/unet/diffusion_pytorch_model.fp16.safetensors": {
+      "file_size_mb": 1639.4856491088867,
+      "structure_type": "unknown",
+      "total_parameters": 0,
+      "architecture_hints": [],
+      "issues": [
+        "체크포인트 로딩 실패: invalid load key, '\\xa8'."
+      ],
+      "recommendations": []
+    },
+    "ai_models/checkpoints/stable-diffusion-v1-5/safety_checker/model.safetensors": {
+      "file_size_mb": 1159.650640487671,
+      "structure_type": "unknown",
+      "total_parameters": 0,
+      "architecture_hints": [],
+      "issues": [
+        "체크포인트 로딩 실패: invalid load key, '\\xa6'."
+      ],
+      "recommendations": []
+    },
+    "ai_models/checkpoints/stable-diffusion-v1-5/safety_checker/model.fp16.safetensors": {
+      "file_size_mb": 579.8515701293945,
+      "structure_type": "unknown",
+      "total_parameters": 0,
+      "architecture_hints": [],
+      "issues": [
+        "체크포인트 로딩 실패: invalid load key, '\\xd0'."
+      ],
+      "recommendations": []
+    },
+    "ai_models/checkpoints/stable-diffusion-v1-5/vae/diffusion_pytorch_model.safetensors": {
+      "file_size_mb": 319.14069747924805,
+      "structure_type": "unknown",
+      "total_parameters": 0,
+      "architecture_hints": [],
+      "issues": [
+        "체크포인트 로딩 실패: invalid load key, '\\xa8'."
+      ],
+      "recommendations": []
+    },
+    "ai_models/checkpoints/stable-diffusion-v1-5/vae/diffusion_pytorch_model.fp16.safetensors": {
+      "file_size_mb": 159.58341789245605,
+      "structure_type": "unknown",
+      "total_parameters": 0,
+      "architecture_hints": [],
+      "issues": [
+        "체크포인트 로딩 실패: invalid load key, '\\xd8'."
+      ],
+      "recommendations": []
+    },
+    "ai_models/step_04_geometric_matching/diffusion_pytorch_model.safetensors": {
+      "file_size_mb": 1378.2092323303223,
+      "structure_type": "unknown",
+      "total_parameters": 0,
+      "architecture_hints": [],
+      "issues": [
+        "체크포인트 로딩 실패: invalid load key, '\\xbc'."
+      ],
+      "recommendations": []
+    },
+    "ai_models/Graphonomy/model.safetensors": {
+      "file_size_mb": 104.4208869934082,
+      "structure_type": "unknown",
+      "total_parameters": 0,
+      "architecture_hints": [],
+      "issues": [
+        "체크포인트 로딩 실패: invalid load key, '\\x9c'."
+      ],
+      "recommendations": []
+    },
+    "ai_models/step_02_pose_estimation/diffusion_pytorch_model.fp16.safetensors": {
+      "file_size_mb": 689.1237659454346,
+      "structure_type": "unknown",
+      "total_parameters": 0,
+      "architecture_hints": [],
+      "issues": [
+        "체크포인트 로딩 실패: invalid load key, '\\xca'."
+      ],
+      "recommendations": []
+    },
+    "ai_models/step_02_pose_estimation/ultra_models/diffusion_pytorch_model.safetensors": {
+      "file_size_mb": 1378.2092323303223,
+      "structure_type": "unknown",
+      "total_parameters": 0,
+      "architecture_hints": [],
+      "issues": [
+        "체크포인트 로딩 실패: invalid load key, '\\xbc'."
+      ],
+      "recommendations": []
+    },
+    "ai_models/step_05_cloth_warping/RealVisXL_V4.0.safetensors": {
+      "file_size_mb": 6616.631227493286,
+      "structure_type": "unknown",
+      "total_parameters": 0,
+      "architecture_hints": [],
+      "issues": [
+        "체크포인트 로딩 실패: invalid load key, '\\x08'."
+      ],
+      "recommendations": []
+    },
+    "ai_models/step_05_cloth_warping/safety_checker/model.fp16.safetensors": {
+      "file_size_mb": 579.8515701293945,
+      "structure_type": "unknown",
+      "total_parameters": 0,
+      "architecture_hints": [],
+      "issues": [
+        "체크포인트 로딩 실패: invalid load key, '\\xd0'."
+      ],
+      "recommendations": []
+    },
+    "ai_models/experimental_models/sdxl_turbo_ultra/text_encoder_2/model.safetensors": {
+      "file_size_mb": 2649.976982116699,
+      "structure_type": "unknown",
+      "total_parameters": 0,
+      "architecture_hints": [],
+      "issues": [
+        "체크포인트 로딩 실패: invalid load key, '\\xb0'."
+      ],
+      "recommendations": []
+    },
+    "ai_models/experimental_models/sdxl_turbo_ultra/text_encoder/model.safetensors": {
+      "file_size_mb": 469.4606475830078,
+      "structure_type": "unknown",
+      "total_parameters": 0,
+      "architecture_hints": [],
+      "issues": [
+        "체크포인트 로딩 실패: invalid load key, '\\xc8'."
+      ],
+      "recommendations": []
+    },
+    "ai_models/experimental_models/sdxl_turbo_ultra/unet/diffusion_pytorch_model.fp16.safetensors": {
+      "file_size_mb": 4897.260437011719,
+      "structure_type": "unknown",
+      "total_parameters": 0,
+      "architecture_hints": [],
+      "issues": [
+        "체크포인트 로딩 실패: invalid load key, '\\xb0'."
+      ],
+      "recommendations": []
+    },
+    "ai_models/experimental_models/controlnet_xl_canny/diffusion_pytorch_model.fp16.safetensors": {
+      "file_size_mb": 2386.225830078125,
+      "structure_type": "unknown",
+      "total_parameters": 0,
+      "architecture_hints": [],
+      "issues": [
+        "체크포인트 로딩 실패: invalid load key, '\\xd8'."
+      ],
+      "recommendations": []
+    },
+    "ai_models/future_enhancements/face_enhancement/instantid_ultra/ControlNetModel/diffusion_pytorch_model.safetensors": {
+      "file_size_mb": 2386.225830078125,
+      "structure_type": "unknown",
+      "total_parameters": 0,
+      "architecture_hints": [],
+      "issues": [
+        "체크포인트 로딩 실패: invalid load key, '\\xd8'."
+      ],
+      "recommendations": []
+    }
+  }
+}

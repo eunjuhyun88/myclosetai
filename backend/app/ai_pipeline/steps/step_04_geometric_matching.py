@@ -49,6 +49,9 @@ from app.ai_pipeline.utils.common_imports import (
 import weakref
 from concurrent.futures import as_completed
 
+# 메모리 모니터링 추가
+from app.ai_pipeline.utils.memory_monitor import log_step_memory, cleanup_step_memory
+
 # ViT 기반 GMM 모델 임포트
 try:
     from ..models.vit_based_gmm import VITBasedGeometricMatchingModule
@@ -1135,11 +1138,18 @@ class GeometricMatchingStep(BaseStepMixin):
                         try:
                             test_tensor = torch.zeros((1, 6, 256, 192), device=self.device, dtype=torch.float32)
                             
-                            # 🔥 MPS 타입 통일
+                            # 🔥 MPS 타입 통일 (강화된 버전)
                             if self.device == 'mps':
                                 test_tensor = test_tensor.to(dtype=torch.float32)
                                 if hasattr(model, 'to'):
                                     model = model.to(dtype=torch.float32)
+                                
+                                # 모든 모델 파라미터를 float32로 통일
+                                for param in model.parameters():
+                                    param.data = param.data.to(dtype=torch.float32)
+                                
+                                # 모델을 eval 모드로 설정
+                                model.eval()
                             
                             with torch.no_grad():
                                 _ = model(test_tensor, test_tensor)
@@ -1610,13 +1620,27 @@ class GeometricMatchingStep(BaseStepMixin):
                                 
                                 logger.info("✅ 논문 기반 가중치 최적화 완료")
                             
-                            # 모델 추론 테스트
-                            test_input_person = torch.randn(1, 3, 224, 224, device=self.device)
-                            test_input_clothing = torch.randn(1, 3, 224, 224, device=self.device)
-                            
-                            with torch.no_grad():
-                                test_output = gmm_model(test_input_person, test_input_clothing)
-                                logger.info(f"✅ ViT GMM 모델 추론 테스트 성공: {len(test_output)}개 출력")
+                                                                # 🔥 MPS 타입 완전 통일 - 모든 파라미터를 float32로 변환
+                                if self.device == "mps" and torch.backends.mps.is_available():
+                                    # 모델의 모든 파라미터를 float32로 변환
+                                    for param in gmm_model.parameters():
+                                        param.data = param.data.to(dtype=torch.float32)
+                                    
+                                    # 테스트 입력도 float32로 생성
+                                    test_input_person = torch.randn(1, 3, 224, 224, dtype=torch.float32, device=self.device)
+                                    test_input_clothing = torch.randn(1, 3, 224, 224, dtype=torch.float32, device=self.device)
+                                    
+                                    with torch.no_grad():
+                                        test_output = gmm_model(test_input_person, test_input_clothing)
+                                        logger.info(f"✅ ViT GMM 모델 추론 테스트 성공 (MPS float32): {len(test_output)}개 출력")
+                                else:
+                                    # CPU 또는 다른 디바이스
+                                    test_input_person = torch.randn(1, 3, 224, 224, device=self.device)
+                                    test_input_clothing = torch.randn(1, 3, 224, 224, device=self.device)
+                                    
+                                    with torch.no_grad():
+                                        test_output = gmm_model(test_input_person, test_input_clothing)
+                                        logger.info(f"✅ ViT GMM 모델 추론 테스트 성공: {len(test_output)}개 출력")
                                 
                         except Exception as validation_error:
                             logger.warning(f"⚠️ 모델 검증 실패: {validation_error}")
@@ -1832,7 +1856,11 @@ class GeometricMatchingStep(BaseStepMixin):
                             logger.warning(f"⚠️ TPS 모델 부분적 로딩도 실패: {partial_error}")
                             logger.info("✅ TPS 모델 초기화된 가중치로 사용")
                     
-                    tps_model.to(self.device)
+                    # 🔥 MPS 타입 변환 추가 (Step 1, 2, 3과 동일한 방식)
+                    if self.device == "mps" and torch.backends.mps.is_available():
+                        tps_model = tps_model.to(dtype=torch.float32, device=self.device)
+                    else:
+                        tps_model = tps_model.to(self.device)
                     tps_model.eval()
                     
                     self.ai_models['tps'] = tps_model
@@ -1881,13 +1909,22 @@ class GeometricMatchingStep(BaseStepMixin):
                     except Exception as raft_error:
                         logger.warning(f"⚠️ RAFT 모델 가중치 로딩 실패, 초기화된 가중치 사용: {raft_error}")
                     
-                    optical_flow_model.to(self.device)
+                    # 🔥 MPS 타입 변환 추가 (Step 1, 2, 3과 동일한 방식)
+                    if self.device == "mps" and torch.backends.mps.is_available():
+                        optical_flow_model = optical_flow_model.to(dtype=torch.float32, device=self.device)
+                    else:
+                        optical_flow_model = optical_flow_model.to(self.device)
                     optical_flow_model.eval()
                     
-                    # 🔥 모델 검증 추가
+                    # 🔥 모델 검증 추가 (MPS 타입 변환 포함)
                     try:
-                        test_input1 = torch.zeros((1, 3, 256, 192), device=self.device)
-                        test_input2 = torch.zeros((1, 3, 256, 192), device=self.device)
+                        if self.device == "mps" and torch.backends.mps.is_available():
+                            test_input1 = torch.zeros((1, 3, 256, 192), dtype=torch.float32, device=self.device)
+                            test_input2 = torch.zeros((1, 3, 256, 192), dtype=torch.float32, device=self.device)
+                        else:
+                            test_input1 = torch.zeros((1, 3, 256, 192), device=self.device)
+                            test_input2 = torch.zeros((1, 3, 256, 192), device=self.device)
+                        
                         with torch.no_grad():
                             test_output = optical_flow_model(test_input1, test_input2)
                         logger.info(f"✅ RAFT 모델 추론 테스트 성공: {type(test_output)}")
@@ -1907,7 +1944,11 @@ class GeometricMatchingStep(BaseStepMixin):
                         hidden_dim=128,
                         num_iters=12
                     )
-                    optical_flow_model.to(self.device)
+                    # 🔥 MPS 타입 변환 추가 (Step 1, 2, 3과 동일한 방식)
+                    if self.device == "mps" and torch.backends.mps.is_available():
+                        optical_flow_model = optical_flow_model.to(dtype=torch.float32, device=self.device)
+                    else:
+                        optical_flow_model = optical_flow_model.to(self.device)
                     optical_flow_model.eval()
                     
                     self.ai_models['optical_flow'] = optical_flow_model
@@ -2106,6 +2147,27 @@ class GeometricMatchingStep(BaseStepMixin):
     def process(self, **kwargs) -> Dict[str, Any]:
         """🔥 완전한 Geometric Matching 처리 - step_01과 동일한 구조"""
         try:
+            # 🔥 메모리 모니터링 시작
+            log_step_memory("Step 4 - Geometric Matching 시작", kwargs.get('session_id', 'unknown'))
+            
+            # 🔥 세션 데이터 추적 로깅 추가
+            session_id = kwargs.get('session_id', 'unknown')
+            print(f"🔥 [세션 추적] Step 4 시작 - session_id: {session_id}")
+            print(f"🔥 [세션 추적] Step 4 입력 데이터 크기: {len(str(kwargs))} bytes")
+            
+            # 🔥 입력 데이터 상세 로깅
+            print(f"🔥 [디버깅] Step 4 입력 키들: {list(kwargs.keys()) if kwargs else 'None'}")
+            print(f"🔥 [디버깅] Step 4 입력 값들: {[(k, type(v).__name__) for k, v in kwargs.items()] if kwargs else 'None'}")
+            
+            # 🔥 모델 로딩 상태 확인
+            loaded_models = list(self.ai_models.keys()) if hasattr(self, 'ai_models') and self.ai_models else []
+            print(f"🔥 [디버깅] Step 4 모델 로딩 상태 - 로드된 모델: {loaded_models}")
+            print(f"🔥 [디버깅] Step 4 모델 로딩 상태 - 모델 개수: {len(loaded_models)}")
+            
+            # 🔥 디바이스 정보 확인
+            device_info = getattr(self, 'device', 'unknown')
+            print(f"🔥 [디버깅] Step 4 디바이스 정보 - device: {device_info}")
+            
             start_time = time.time()
             logger.info("�� Geometric Matching Step 시작")
             
@@ -2115,23 +2177,46 @@ class GeometricMatchingStep(BaseStepMixin):
                 if not self.initialize():
                     return self._create_error_response("스텝 초기화 실패")        
             # 2. 입력 데이터 검증 및 전처리
+            print(f"🔥 [디버깅] Step 4 - API 입력 변환 시작")
             try:
                 processed_input = self.convert_api_input_to_step_input(kwargs)
+                print(f"🔥 [디버깅] Step 4 - API 입력 변환 완료: {len(processed_input)}개 키")
+                print(f"🔥 [디버깅] Step 4 - 변환된 입력 키들: {list(processed_input.keys()) if processed_input else 'None'}")
                 logger.info(f"✅ API 입력 변환 완료: {len(processed_input)}개 키")
             except Exception as convert_error:
+                print(f"🔥 [디버깅] ❌ Step 4 - API 입력 변환 실패: {convert_error}")
                 logger.error(f"❌ API 입력 변환 실패: {convert_error}")
                 processed_input = kwargs
             
             # 3. 입력 이미지 추출 및 검증
+            print(f"🔥 [디버깅] Step 4 - 입력 이미지 추출 시작")
             try:
                 person_image, clothing_image, session_data = self._validate_and_extract_inputs(processed_input)
                 
+                print(f"🔥 [디버깅] Step 4 - person_image 타입: {type(person_image)}")
+                print(f"🔥 [디버깅] Step 4 - clothing_image 타입: {type(clothing_image)}")
+                print(f"🔥 [디버깅] Step 4 - session_data 타입: {type(session_data)}")
+                
+                if person_image is not None and hasattr(person_image, 'shape'):
+                    print(f"🔥 [디버깅] Step 4 - person_image shape: {person_image.shape}")
+                if clothing_image is not None and hasattr(clothing_image, 'shape'):
+                    print(f"🔥 [디버깅] Step 4 - clothing_image shape: {clothing_image.shape}")
+                
                 if person_image is None or clothing_image is None:
+                    print(f"🔥 [디버깅] ❌ Step 4 - 입력 이미지 누락")
                     return self._create_error_response("입력 이미지 누락")
                     
+                print(f"🔥 [디버깅] Step 4 - 입력 이미지 검증 완료")
                 logger.info("✅ 입력 이미지 검증 완료")
                 
+                # 🔥 로드된 이미지를 processed_input에 추가
+                processed_input['person_image'] = person_image
+                processed_input['clothing_image'] = clothing_image
+                processed_input['session_data'] = session_data
+                print(f"🔥 [디버깅] Step 4 - 이미지를 processed_input에 추가 완료")
+                
             except Exception as validation_error:
+                print(f"🔥 [디버깅] ❌ Step 4 - 입력 검증 실패: {validation_error}")
                 logger.error(f"❌ 입력 검증 실패: {validation_error}")
                 return self._create_error_response(f"입력 검증 실패: {str(validation_error)}")
             
@@ -2149,15 +2234,25 @@ class GeometricMatchingStep(BaseStepMixin):
                 return self.convert_step_output_to_api_response(cached_result)
             
             # 6. AI 추론 실행
+            print(f"🔥 [디버깅] Step 4 - AI 추론 시작")
             try:
+                print(f"🔥 [디버깅] Step 4 - _run_ai_inference 호출")
                 inference_result = self._run_ai_inference(processed_input)
                 
+                print(f"🔥 [디버깅] Step 4 - AI 추론 결과 타입: {type(inference_result)}")
+                print(f"🔥 [디버깅] Step 4 - AI 추론 결과 키들: {list(inference_result.keys()) if isinstance(inference_result, dict) else 'Not a dict'}")
+                print(f"🔥 [디버깅] Step 4 - AI 추론 성공 여부: {inference_result.get('success', False)}")
+                
                 if not inference_result.get('success', False):
-                    return self._create_error_response(f"AI 추론 실패: {inference_result.get('error', 'Unknown error')}")
+                    error_msg = inference_result.get('error', 'Unknown error')
+                    print(f"🔥 [디버깅] ❌ Step 4 - AI 추론 실패: {error_msg}")
+                    return self._create_error_response(f"AI 추론 실패: {error_msg}")
                     
+                print(f"🔥 [디버깅] Step 4 - AI 추론 완료")
                 logger.info("✅ AI 추론 완료")
                 
             except Exception as inference_error:
+                print(f"🔥 [디버깅] ❌ Step 4 - AI 추론 예외 발생: {inference_error}")
                 logger.error(f"❌ AI 추론 실패: {inference_error}")
                 return self._create_error_response(f"AI 추론 실패: {str(inference_error)}")
             
@@ -2220,6 +2315,26 @@ class GeometricMatchingStep(BaseStepMixin):
             try:
                 api_response = self.convert_step_output_to_api_response(final_result)
                 logger.info(f"✅ Geometric Matching 완료 - 시간: {processing_time:.3f}초, 신뢰도: {final_result.get('confidence', 0):.3f}")
+                
+                # 🔥 세션 데이터 저장 로깅 추가
+                print(f"🔥 [세션 추적] Step 4 완료 - session_id: {session_id}")
+                print(f"🔥 [세션 추적] Step 4 결과 데이터 크기: {len(str(api_response))} bytes")
+                print(f"🔥 [세션 추적] Step 4 성공 여부: {api_response.get('success', False)}")
+                print(f"🔥 [세션 추적] Step 4 처리 시간: {processing_time:.3f}초")
+                
+                # 🔥 다음 스텝을 위한 데이터 준비 로깅
+                if api_response.get('success', False) and 'transformation_matrix' in final_result:
+                    transform_matrix = final_result['transformation_matrix']
+                    print(f"🔥 [세션 추적] Step 4 → Step 5 전달 데이터 준비:")
+                    print(f"🔥 [세션 추적] - transformation_matrix 타입: {type(transform_matrix)}")
+                    if hasattr(transform_matrix, 'shape'):
+                        print(f"🔥 [세션 추적] - transformation_matrix 크기: {transform_matrix.shape}")
+                
+                # 🔥 메모리 정리 및 모니터링
+                log_step_memory("Step 4 - Geometric Matching 완료", session_id)
+                cleanup_result = cleanup_step_memory(aggressive=False)
+                print(f"🔥 [메모리 정리] Step 4 완료 후 정리: {cleanup_result.get('memory_freed_gb', 0):.2f}GB 해제")
+                
                 return api_response
                 
             except Exception as response_error:
@@ -3288,33 +3403,83 @@ class GeometricMatchingStep(BaseStepMixin):
 
     def _run_ai_inference(self, processed_input: Dict[str, Any]) -> Dict[str, Any]:
         """🔥 실제 Geometric Matching AI 추론 (BaseStepMixin v20.0 호환)"""
+        print(f"🔥 [디버깅] Step 4 _run_ai_inference 시작")
         try:
             # 입력 데이터 검증
+            print(f"🔥 [디버깅] Step 4 - 입력 데이터 검증")
             if not processed_input:
+                print(f"🔥 [디버깅] ❌ Step 4 - 입력 데이터가 비어있음")
                 return {'success': False, 'error': '입력 데이터가 비어있습니다'}
             
-            # 이미지 데이터 추출
+            # 🔥 이미지 데이터 추출 (process에서 이미 검증됨)
+            print(f"🔥 [디버깅] Step 4 - 이미지 데이터 추출")
+            print(f"🔥 [디버깅] Step 4 - processed_input 키들: {list(processed_input.keys())}")
+            print(f"🔥 [디버깅] Step 4 - processed_input 값들: {[(k, type(v).__name__) for k, v in processed_input.items()]}")
+            
             person_image = processed_input.get('person_image')
             clothing_image = processed_input.get('clothing_image')
             
+            print(f"🔥 [디버깅] Step 4 - person_image 존재: {person_image is not None}")
+            print(f"🔥 [디버깅] Step 4 - clothing_image 존재: {clothing_image is not None}")
+            print(f"🔥 [디버깅] Step 4 - person_image 타입: {type(person_image)}")
+            print(f"🔥 [디버깅] Step 4 - clothing_image 타입: {type(clothing_image)}")
+            
+            # 🔥 이미지가 없으면 세션에서 다시 로드
             if person_image is None or clothing_image is None:
+                print(f"🔥 [디버깅] Step 4 - 이미지가 없어서 세션에서 다시 로드")
+                person_image, clothing_image, session_data = self._validate_and_extract_inputs(processed_input)
+                print(f"🔥 [디버깅] Step 4 - 재로드 후 person_image 존재: {person_image is not None}")
+                print(f"🔥 [디버깅] Step 4 - 재로드 후 clothing_image 존재: {clothing_image is not None}")
+            
+            if person_image is None or clothing_image is None:
+                print(f"🔥 [디버깅] ❌ Step 4 - 이미지 데이터가 없음")
                 return {'success': False, 'error': '이미지 데이터가 없습니다'}
             
             # 텐서 변환
+            print(f"🔥 [디버깅] Step 4 - 텐서 변환 시작")
             try:
+                print(f"🔥 [디버깅] Step 4 - person_image 텐서 변환")
                 person_tensor = self._prepare_image_tensor_complete(person_image)
+                print(f"🔥 [디버깅] Step 4 - person_tensor 타입: {type(person_tensor)}")
+                print(f"🔥 [디버깅] Step 4 - person_tensor shape: {getattr(person_tensor, 'shape', 'N/A')}")
+                
+                print(f"🔥 [디버깅] Step 4 - clothing_image 텐서 변환")
                 clothing_tensor = self._prepare_image_tensor_complete(clothing_image)
+                print(f"🔥 [디버깅] Step 4 - clothing_tensor 타입: {type(clothing_tensor)}")
+                print(f"🔥 [디버깅] Step 4 - clothing_tensor shape: {getattr(clothing_tensor, 'shape', 'N/A')}")
+                
             except Exception as e:
+                print(f"🔥 [디버깅] ❌ Step 4 - 이미지 텐서 변환 실패: {e}")
                 return {'success': False, 'error': f'이미지 텐서 변환 실패: {e}'}
             
             # AI 모델 실행
+            print(f"🔥 [디버깅] Step 4 - AI 모델 실행 시작")
             try:
+                print(f"🔥 [디버깅] Step 4 - _execute_all_ai_models 호출")
                 results = self._execute_all_ai_models(person_tensor, clothing_tensor, force_ai_processing=True)
                 
-                if not results.get('success', False):
-                    return {'success': False, 'error': results.get('error', 'AI 모델 실행 실패')}
+                print(f"🔥 [디버깅] Step 4 - AI 모델 실행 결과 타입: {type(results)}")
+                print(f"🔥 [디버깅] Step 4 - AI 모델 실행 결과 키들: {list(results.keys()) if isinstance(results, dict) else 'Not a dict'}")
+                
+                # 🔥 AI 결과 검증 추가
+                print(f"🔥 [디버깅] Step 4 - AI 결과 상세 검증:")
+                for model_name, result in results.items():
+                    print(f"🔥 [디버깅] - {model_name}: {type(result).__name__}")
+                    if isinstance(result, dict):
+                        print(f"🔥 [디버깅]   - 키들: {list(result.keys())}")
+                    elif hasattr(result, 'shape'):
+                        print(f"🔥 [디버깅]   - shape: {result.shape}")
+                
+                # 🔥 최소한 하나의 모델이 성공했는지 확인
+                successful_models = [name for name, result in results.items() if result is not None]
+                print(f"🔥 [디버깅] Step 4 - 성공한 모델들: {successful_models}")
+                
+                if not successful_models:
+                    print(f"🔥 [디버깅] ❌ Step 4 - 모든 AI 모델 실패")
+                    return {'success': False, 'error': '모든 AI 모델 실패'}
                 
                 # 결과 융합 및 후처리
+                print(f"🔥 [디버깅] Step 4 - 결과 융합 및 후처리 시작")
                 final_result = self._fuse_and_postprocess_results(results, person_tensor, clothing_tensor)
                 
                 return {
@@ -3455,16 +3620,42 @@ class GeometricMatchingStep(BaseStepMixin):
         # 세션에서 이미지 추출 시도
         if (person_image is None or clothing_image is None) and 'session_id' in kwargs:
             try:
+                print(f"🔥 [디버깅] Step 4 - 세션에서 이미지 추출 시도: {kwargs['session_id']}")
                 session_manager = self._get_service_from_central_hub('session_manager')
                 if session_manager and hasattr(session_manager, 'get_session_images_sync'):
                     session_person, session_clothing = session_manager.get_session_images_sync(kwargs['session_id'])
-                    if person_image is None:
+                    print(f"🔥 [디버깅] Step 4 - 세션에서 추출된 이미지:")
+                    print(f"🔥 [디버깅] - session_person 타입: {type(session_person)}")
+                    print(f"🔥 [디버깅] - session_clothing 타입: {type(session_clothing)}")
+                    
+                    if person_image is None and session_person is not None:
                         person_image = session_person
-                    if clothing_image is None:
+                        print(f"🔥 [디버깅] Step 4 - person_image를 세션에서 로드")
+                    
+                    if clothing_image is None and session_clothing is not None:
                         clothing_image = session_clothing
-                    session_data = session_manager.get_session_status(kwargs['session_id']) or {}
+                        print(f"🔥 [디버깅] Step 4 - clothing_image를 세션에서 로드")
+                    
+                    # 세션 데이터도 동기적으로 가져오기
+                    try:
+                        session_data = session_manager.get_session_status(kwargs['session_id']) or {}
+                        print(f"🔥 [디버깅] Step 4 - 세션 데이터 로드 완료: {len(session_data)}개 키")
+                    except Exception as session_data_error:
+                        print(f"🔥 [디버깅] Step 4 - 세션 데이터 로드 실패: {session_data_error}")
+                        session_data = {}
+                        
             except Exception as e:
+                print(f"🔥 [디버깅] ❌ Step 4 - 세션에서 이미지 추출 실패: {e}")
                 logger.warning(f"⚠️ 세션에서 이미지 추출 실패: {e}")
+        
+        # 🔥 최종 검증 로깅
+        print(f"🔥 [디버깅] Step 4 - 최종 이미지 상태:")
+        print(f"🔥 [디버깅] - person_image 존재: {person_image is not None}")
+        print(f"🔥 [디버깅] - clothing_image 존재: {clothing_image is not None}")
+        if person_image is not None:
+            print(f"🔥 [디버깅] - person_image 타입: {type(person_image)}")
+        if clothing_image is not None:
+            print(f"🔥 [디버깅] - clothing_image 타입: {type(clothing_image)}")
         
         return person_image, clothing_image, session_data
 
@@ -3557,12 +3748,22 @@ class GeometricMatchingStep(BaseStepMixin):
                         logger.info("🧠 Advanced AI 모델 실제 추론 시작...")
                         print("🧠 Advanced AI 모델 실제 추론 시작...")
                         
-                        # 🔥 MPS 타입 통일
+                        # 🔥 MPS 타입 통일 (모든 모델에 적용)
                         if self.device == 'mps':
                             person_tensor = person_tensor.to(dtype=torch.float32)
                             clothing_tensor = clothing_tensor.to(dtype=torch.float32)
-                            if hasattr(self.advanced_geometric_ai, 'to'):
-                                self.advanced_geometric_ai = self.advanced_geometric_ai.to(dtype=torch.float32)
+                            
+                            # 🔥 모든 모델 파라미터를 float32로 통일
+                            for model_name, model in self.ai_models.items():
+                                if hasattr(model, 'parameters'):
+                                    for param in model.parameters():
+                                        param.data = param.data.to(dtype=torch.float32)
+                            
+                            # 🔥 advanced_geometric_ai 모델도 float32로 통일
+                            if hasattr(self, 'advanced_geometric_ai') and self.advanced_geometric_ai is not None:
+                                if hasattr(self.advanced_geometric_ai, 'parameters'):
+                                    for param in self.advanced_geometric_ai.parameters():
+                                        param.data = param.data.to(dtype=torch.float32)
                         
                         # 6채널 입력으로 결합
                         combined_input = torch.cat([person_tensor, clothing_tensor], dim=1)
@@ -3793,12 +3994,22 @@ class GeometricMatchingStep(BaseStepMixin):
                         logger.info("🧠 Advanced AI 모델 실제 추론 시작...")
                         print("🧠 Advanced AI 모델 실제 추론 시작...")
                         
-                        # 🔥 MPS 타입 통일
+                        # 🔥 MPS 타입 통일 (모든 모델에 적용)
                         if self.device == 'mps':
                             person_tensor = person_tensor.to(dtype=torch.float32)
                             clothing_tensor = clothing_tensor.to(dtype=torch.float32)
-                            if hasattr(self.advanced_geometric_ai, 'to'):
-                                self.advanced_geometric_ai = self.advanced_geometric_ai.to(dtype=torch.float32)
+                            
+                            # 🔥 모든 모델 파라미터를 float32로 통일
+                            for model_name, model in self.ai_models.items():
+                                if hasattr(model, 'parameters'):
+                                    for param in model.parameters():
+                                        param.data = param.data.to(dtype=torch.float32)
+                            
+                            # 🔥 advanced_geometric_ai 모델도 float32로 통일
+                            if hasattr(self, 'advanced_geometric_ai') and self.advanced_geometric_ai is not None:
+                                if hasattr(self.advanced_geometric_ai, 'parameters'):
+                                    for param in self.advanced_geometric_ai.parameters():
+                                        param.data = param.data.to(dtype=torch.float32)
                         
                         # 6채널 입력으로 결합
                         combined_input = torch.cat([person_tensor, clothing_tensor], dim=1)
@@ -3917,6 +4128,7 @@ class GeometricMatchingStep(BaseStepMixin):
         
         elif result_type == "error":
             """에러 결과 생성"""
+            self.logger.warning("⚠️ [Step 4] 에러 결과 생성 - 실제 AI 모델이 사용되지 않음!")
             error_msg = kwargs.get('error_msg', 'Unknown error')
             processing_time = kwargs.get('processing_time', 0.0)
             

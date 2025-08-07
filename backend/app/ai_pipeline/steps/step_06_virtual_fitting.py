@@ -3170,6 +3170,7 @@ class VirtualFittingStep(BaseStepMixin):
 
     def _create_actual_neural_networks_fallback(self):
         """폴백 모델 생성 금지 - 실제 체크포인트만 허용"""
+        self.logger.warning("⚠️ [Step 6] 폴백 모델 생성 금지 - 실제 AI 모델이 사용되지 않음!")
         self.logger.error("❌ 폴백 모델 생성 금지 - 실제 체크포인트 필요")
         raise RuntimeError("폴백 모델 생성이 금지되었습니다. 실제 체크포인트가 필요합니다.")
 
@@ -3182,12 +3183,14 @@ class VirtualFittingStep(BaseStepMixin):
         """🔥 실제 Virtual Fitting AI 추론 (BaseStepMixin v20.0 호환)"""
         import time  # time 모듈 import 추가
         
-        print(f"🔥 [디버깅] _run_ai_inference() 진입!")
-        print(f"🔥 [디버깅] processed_input 키들: {list(processed_input.keys()) if processed_input else 'None'}")
-        print(f"🔥 [디버깅] processed_input 값들: {[(k, type(v).__name__) for k, v in processed_input.items()] if processed_input else 'None'}")
+        print(f"🔥 [디버깅] Step 6 _run_ai_inference 시작")
+        print(f"🔥 [디버깅] Step 6 입력 키들: {list(processed_input.keys()) if processed_input else 'None'}")
+        print(f"🔥 [디버깅] Step 6 입력 값들: {[(k, type(v).__name__) for k, v in processed_input.items()] if processed_input else 'None'}")
         
-        print(f"🔍 VirtualFittingStep _run_ai_inference 시작")
-        print(f"🔍 입력 데이터 키들: {list(processed_input.keys()) if processed_input else 'None'}")
+        # 🔥 세션 데이터 추적 로깅 추가
+        session_id = processed_input.get('session_id', 'unknown')
+        print(f"🔥 [세션 추적] Step 6 시작 - session_id: {session_id}")
+        print(f"🔥 [세션 추적] Step 6 입력 데이터 크기: {len(str(processed_input))} bytes")
         
         try:
             import time
@@ -3728,6 +3731,14 @@ class VirtualFittingStep(BaseStepMixin):
     quality_level: str,
     cloth_items: List[Dict[str, Any]]
 ) -> Dict[str, Any]:
+        """🔥 실제 Virtual Fitting 추론 실행"""
+        print(f"🔥 [디버깅] Step 6 _run_virtual_fitting_inference 시작")
+        print(f"🔥 [디버깅] Step 6 - person_image shape: {person_image.shape if hasattr(person_image, 'shape') else 'N/A'}")
+        print(f"🔥 [디버깅] Step 6 - cloth_image shape: {cloth_image.shape if hasattr(cloth_image, 'shape') else 'N/A'}")
+        print(f"🔥 [디버깅] Step 6 - fitting_mode: {fitting_mode}")
+        print(f"🔥 [디버깅] Step 6 - quality_level: {quality_level}")
+        print(f"🔥 [디버깅] Step 6 - cloth_items 개수: {len(cloth_items) if cloth_items else 0}")
+        
         """Virtual Fitting AI 추론 실행"""
         try:
             # 🔥 time 모듈 안전한 import 확인

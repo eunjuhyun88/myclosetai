@@ -2115,10 +2115,12 @@ class ModelLoader:
     # 🔥 fix_checkpoints.py에서 검증된 실제 파일 경로들
     VERIFIED_MODEL_PATHS = {
         # Human Parsing (✅ 실제 존재하는 파일들로 업데이트)
+        "human_parsing_schp": "Self-Correction-Human-Parsing/exp-schp-201908261155-atr.pth",  # 실제 PyTorch 모델
         "graphonomy": "step_01_human_parsing/graphonomy_fixed.pth",
         "graphonomy.pth": "step_01_human_parsing/graphonomy_fixed.pth",
         "graphonomy_fixed.pth": "step_01_human_parsing/graphonomy_fixed.pth",
         "graphonomy_new.pth": "step_01_human_parsing/graphonomy_new.pth",
+        "graphonomy_root.pth": "step_01_human_parsing/graphonomy_root.pth",  # 실제 파일
         "pytorch_model.bin": "step_01_human_parsing/pytorch_model.bin",
         
         # SCHP 모델들 (✅ 실제 존재)
@@ -2135,14 +2137,16 @@ class ModelLoader:
         "graphonomy_safetensors": "Graphonomy/model.safetensors",
         "graphonomy_pytorch.bin": "Graphonomy/pytorch_model.bin",
         
-        # Cloth Segmentation (✅ 실제 파일 존재 확인됨)
+        # Cloth Segmentation (✅ 검증된 실제 파일 경로들)
         "sam": "step_03_cloth_segmentation/sam_vit_h_4b8939.pth",
         "sam_vit_h_4b8939": "step_03_cloth_segmentation/sam_vit_h_4b8939.pth",
         "sam_vit_h_4b8939.pth": "step_03_cloth_segmentation/sam_vit_h_4b8939.pth",
         "deeplabv3_resnet101_ultra": "step_03_cloth_segmentation/deeplabv3_resnet101_ultra.pth",
         "deeplabv3_resnet101_ultra.pth": "step_03_cloth_segmentation/deeplabv3_resnet101_ultra.pth",
+        "mobile_sam": "step_03_cloth_segmentation/mobile_sam_alternative.pt",
+        "mobile_sam.pt": "step_03_cloth_segmentation/mobile_sam_alternative.pt",
         
-        # U2Net alternative (✅ 실제 파일 존재 확인됨)
+        # U2Net alternative (✅ 검증된 실제 파일 경로들)
         "u2net": "step_03_cloth_segmentation/u2net.pth",
         "u2net.pth": "step_03_cloth_segmentation/u2net.pth",
         "u2net.pth.1": "step_03_cloth_segmentation/u2net.pth.1",
@@ -2157,15 +2161,19 @@ class ModelLoader:
         "hrnet": "step_03_cloth_segmentation/u2net.pth",
         "hrnet.pth": "step_03_cloth_segmentation/u2net.pth",
         
-        # Pose Estimation (✅ 실제 파일 존재 확인됨)
-        "yolov8n-pose": "step_02_pose_estimation/yolov8n-pose.pt",
-        "yolov8n-pose.pt": "step_02_pose_estimation/yolov8n-pose.pt",
-        "body_pose_model": "step_02_pose_estimation/body_pose_model.pth",
-        "body_pose_model.pth": "step_02_pose_estimation/body_pose_model.pth",
+        # Pose Estimation (✅ 검증된 실제 파일 경로들)
+        "yolov8m-pose": "step_02_pose_estimation/yolov8m-pose.pt",
+        "yolov8m-pose.pt": "step_02_pose_estimation/yolov8m-pose.pt",
+        "body_pose_model": "step_06_virtual_fitting/ootdiffusion/checkpoints/openpose/ckpts/body_pose_model.pth",
+        "body_pose_model.pth": "step_06_virtual_fitting/ootdiffusion/checkpoints/openpose/ckpts/body_pose_model.pth",
+        "hrnet_w48_coco_384x288": "step_02_pose_estimation/hrnet_w48_coco_384x288.pth",
+        "hrnet_w48_coco_384x288.pth": "step_02_pose_estimation/hrnet_w48_coco_384x288.pth",
         "hrnet_w48_coco_256x192": "step_02_pose_estimation/hrnet_w48_coco_256x192.pth",
         "hrnet_w48_coco_256x192.pth": "step_02_pose_estimation/hrnet_w48_coco_256x192.pth",
-        "openpose": "step_02_pose_estimation/openpose.pth",
-        "openpose.pth": "step_02_pose_estimation/openpose.pth",
+        "hrnet_w32_coco_256x192": "step_02_pose_estimation/hrnet_w32_coco_256x192.pth",
+        "hrnet_w32_coco_256x192.pth": "step_02_pose_estimation/hrnet_w32_coco_256x192.pth",
+        "openpose": "ai_models/openpose.pth",
+        "openpose.pth": "ai_models/openpose.pth",
         
         # Geometric Matching (✅ 실제 파일 존재 확인됨 - 새로운 고성능 모델들)
         "gmm_final": "step_04_geometric_matching/gmm_final.pth",  # VITON-HD 기반 (1.3GB)
@@ -2201,11 +2209,40 @@ class ModelLoader:
         "vgg19_warping": "step_04_geometric_matching/efficientnet_b0_ultra.pth",  # 대안 모델
         "vgg19_warping.pth": "step_04_geometric_matching/efficientnet_b0_ultra.pth",
         
-        # Cloth Warping (✅ 6616.6MB 검증됨)
+        # Cloth Warping (✅ 실제 파일 경로로 수정)
         "realvis": "step_05_cloth_warping/RealVisXL_V4.0.safetensors",
         "realvisxl": "step_05_cloth_warping/RealVisXL_V4.0.safetensors",
         "RealVisXL_V4.0": "step_05_cloth_warping/RealVisXL_V4.0.safetensors",
         "RealVisXL_V4.0.safetensors": "step_05_cloth_warping/RealVisXL_V4.0.safetensors",
+        
+        # DPT 모델들 (✅ 실제 파일 경로로 수정)
+        "dpt_hybrid_midas": "step_05_cloth_warping/dpt_hybrid_midas.pth",
+        "dpt_hybrid_midas.pth": "step_05_cloth_warping/dpt_hybrid_midas.pth",
+        "dpt_hybrid-midas-501f0c75.pt": "step_05_cloth_warping/dpt_hybrid_midas.pth",
+        "dpt_large": "step_05_cloth_warping/dpt_large-501f0c75.pt",
+        "dpt_large-501f0c75.pt": "step_05_cloth_warping/dpt_large-501f0c75.pt",
+        "dpt_large.pth": "step_05_cloth_warping/dpt_large-501f0c75.pt",
+        
+        # VITON-HD 모델들 (✅ 실제 파일 경로로 수정)
+        "viton_hd": "step_05_cloth_warping/viton_hd_warping.pth",
+        "viton_hd_warping": "step_05_cloth_warping/viton_hd_warping.pth",
+        "viton_hd_warping.pth": "step_05_cloth_warping/viton_hd_warping.pth",
+        "viton_hd_2.1gb": "step_05_cloth_warping/viton_hd_warping.pth",
+        "viton_hd_2.1gb.pth": "step_05_cloth_warping/viton_hd_warping.pth",
+        "viton_hd_2.1gb": "step_06_virtual_fitting/viton_hd_2.1gb.pth",
+        "viton_hd_2.1gb.pth": "step_06_virtual_fitting/viton_hd_2.1gb.pth",
+        "hrviton_final": "step_06_virtual_fitting/hrviton_final.pth",
+        "hrviton_final.pth": "step_06_virtual_fitting/hrviton_final.pth",
+        
+        # TPS 모델들 (✅ 실제 파일 경로로 수정)
+        "tps_transformation": "step_05_cloth_warping/tps_transformation.pth",
+        "tps_transformation.pth": "step_05_cloth_warping/tps_transformation.pth",
+        "tps_network": "step_05_cloth_warping/tps_network.pth",
+        "tps_network.pth": "step_05_cloth_warping/tps_network.pth",
+        
+        # GMM 모델들 (✅ 실제 파일 경로로 수정)
+        "gmm_final": "step_05_cloth_warping/gmm_final.pth",
+        "gmm_final.pth": "step_05_cloth_warping/gmm_final.pth",
         
         # Virtual Fitting (✅ 3278.9MB 검증됨 - 4개 파일)
         "diffusion_unet_vton": "step_06_virtual_fitting/ootdiffusion/checkpoints/ootd/ootd_hd/checkpoint-36000/unet_vton/diffusion_pytorch_model.safetensors",

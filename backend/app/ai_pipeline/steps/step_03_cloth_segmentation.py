@@ -254,6 +254,11 @@ if BaseStepMixin is None:
             print(f"🔥 [디버깅] kwargs 키들: {list(kwargs.keys()) if kwargs else 'None'}")
             print(f"🔥 [디버깅] kwargs 값들: {[(k, type(v).__name__) for k, v in kwargs.items()] if kwargs else 'None'}")
             
+            # 🔥 세션 데이터 추적 로깅 추가
+            session_id = kwargs.get('session_id', 'unknown')
+            print(f"🔥 [세션 추적] Step 3 시작 - session_id: {session_id}")
+            print(f"🔥 [세션 추적] Step 3 입력 데이터 크기: {len(str(kwargs))} bytes")
+            
             try:
                 start_time = time.time()
                 
@@ -298,6 +303,24 @@ if BaseStepMixin is None:
                             result['step_name'] = self.step_name
                             result['step_id'] = self.step_id
                             print(f"🔥 [디버깅] 결과에 메타데이터 추가 완료")
+                        
+                        # 🔥 세션 데이터 저장 로깅 추가
+                        print(f"🔥 [세션 추적] Step 3 완료 - session_id: {session_id}")
+                        print(f"🔥 [세션 추적] Step 3 결과 데이터 크기: {len(str(result))} bytes")
+                        print(f"🔥 [세션 추적] Step 3 성공 여부: {result.get('success', False)}")
+                        print(f"🔥 [세션 추적] Step 3 처리 시간: {result.get('processing_time', 0):.3f}초")
+                        
+                        # 🔥 다음 스텝을 위한 데이터 준비 로깅
+                        if result.get('success', False) and 'segmentation_result' in result:
+                            seg_data = result['segmentation_result']
+                            print(f"🔥 [세션 추적] Step 3 → Step 4 전달 데이터 준비:")
+                            print(f"🔥 [세션 추적] - segmentation_result 타입: {type(seg_data)}")
+                            print(f"🔥 [세션 추적] - segmentation_result 키들: {list(seg_data.keys()) if isinstance(seg_data, dict) else 'N/A'}")
+                            if isinstance(seg_data, dict) and 'masks' in seg_data:
+                                masks = seg_data['masks']
+                                print(f"🔥 [세션 추적] - masks 타입: {type(masks)}")
+                                if isinstance(masks, dict):
+                                    print(f"🔥 [세션 추적] - masks 키 개수: {len(masks)}")
                         
                         print(f"🔥 [디버깅] process() 메서드 완료 - 결과 반환")
                         return result
@@ -2425,6 +2448,7 @@ class ClothSegmentationStep(BaseStepMixin):
 
     def _create_fallback_segmentation_result(self, image_shape: Tuple[int, ...]) -> Dict[str, Any]:
         """폴백 세그멘테이션 결과 생성"""
+        self.logger.warning("⚠️ [Step 3] 폴백 세그멘테이션 결과 생성 - 실제 AI 모델이 사용되지 않음!")
         try:
             height, width = image_shape[:2]
             

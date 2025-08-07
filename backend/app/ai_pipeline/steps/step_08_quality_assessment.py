@@ -1103,6 +1103,7 @@ class TechnicalQualityAnalyzer:
     
     def _get_fallback_results(self) -> Dict[str, float]:
         """폴백 기술적 분석 결과"""
+        self.logger.warning("⚠️ [Step 8] 폴백 기술적 분석 결과 생성 - 실제 AI 모델이 사용되지 않음!")
         return {
             'sharpness': 0.5,
             'noise_level': 0.6,
@@ -1419,9 +1420,14 @@ class QualityAssessmentStep(BaseStepMixin):
         """🔥 실제 Quality Assessment AI 추론 (BaseStepMixin v20.0 호환)"""
         import time  # time 모듈 import 추가
         
-        print(f"🔥 [디버깅] _run_ai_inference() 진입!")
-        print(f"🔥 [디버깅] processed_input 키들: {list(processed_input.keys()) if processed_input else 'None'}")
-        print(f"🔥 [디버깅] processed_input 값들: {[(k, type(v).__name__) for k, v in processed_input.items()] if processed_input else 'None'}")
+        print(f"🔥 [디버깅] Step 8 _run_ai_inference 시작")
+        print(f"🔥 [디버깅] Step 8 입력 키들: {list(processed_input.keys()) if processed_input else 'None'}")
+        print(f"🔥 [디버깅] Step 8 입력 값들: {[(k, type(v).__name__) for k, v in processed_input.items()] if processed_input else 'None'}")
+        
+        # 🔥 세션 데이터 추적 로깅 추가
+        session_id = processed_input.get('session_id', 'unknown')
+        print(f"🔥 [세션 추적] Step 8 시작 - session_id: {session_id}")
+        print(f"🔥 [세션 추적] Step 8 입력 데이터 크기: {len(str(processed_input))} bytes")
         
         try:
             start_time = time.time()

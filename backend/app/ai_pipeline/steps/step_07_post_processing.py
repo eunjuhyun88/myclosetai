@@ -1917,6 +1917,7 @@ class PostProcessingResultProcessor:
     
     def _create_fallback_result(self) -> Dict[str, Any]:
         """폴백 결과 생성"""
+        self.logger.warning("⚠️ [Step 7] 폴백 결과 생성 - 실제 AI 모델이 사용되지 않음!")
         fallback_image = np.zeros((512, 512, 3), dtype=np.uint8)
         
         return {
@@ -2239,9 +2240,14 @@ class PostProcessingStep(BaseStepMixin):
         """
         import time  # time 모듈 import 추가
         
-        print(f"🔥 [디버깅] _run_ai_inference() 진입!")
-        print(f"🔥 [디버깅] processed_input 키들: {list(processed_input.keys()) if processed_input else 'None'}")
-        print(f"🔥 [디버깅] processed_input 값들: {[(k, type(v).__name__) for k, v in processed_input.items()] if processed_input else 'None'}")
+        print(f"🔥 [디버깅] Step 7 _run_ai_inference 시작")
+        print(f"🔥 [디버깅] Step 7 입력 키들: {list(processed_input.keys()) if processed_input else 'None'}")
+        print(f"🔥 [디버깅] Step 7 입력 값들: {[(k, type(v).__name__) for k, v in processed_input.items()] if processed_input else 'None'}")
+        
+        # 🔥 세션 데이터 추적 로깅 추가
+        session_id = processed_input.get('session_id', 'unknown')
+        print(f"🔥 [세션 추적] Step 7 시작 - session_id: {session_id}")
+        print(f"🔥 [세션 추적] Step 7 입력 데이터 크기: {len(str(processed_input))} bytes")
         
         try:
             start_time = time.time()

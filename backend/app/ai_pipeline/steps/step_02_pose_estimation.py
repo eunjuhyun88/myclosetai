@@ -3554,6 +3554,22 @@ class PoseEstimationStep(BaseStepMixin):
         logger.info(f"🔥 [디버깅] PoseEstimationStep.process() 진입!")
         logger.info(f"🔥 [디버깅] kwargs 키들: {list(kwargs.keys()) if kwargs else 'None'}")
         
+        # 🔥 세션 키 일관성 확인 로깅 추가
+        session_id = kwargs.get('session_id', 'unknown')
+        self.logger.info(f"🎯 [Step 2] 세션 시작 - session_id: {session_id}")
+        
+        # 🔥 모델 로딩 상태 확인 로깅
+        loaded_models = list(self.ai_models.keys()) if hasattr(self, 'ai_models') and self.ai_models else []
+        self.logger.info(f"🎯 [Step 2] 모델 로딩 상태 - 로드된 모델: {loaded_models}")
+        
+        # 🔥 디바이스 정보 로깅
+        device_info = getattr(self, 'device', 'unknown')
+        self.logger.info(f"🎯 [Step 2] 디바이스 정보 - device: {device_info}")
+        
+        # 🔥 입력 데이터 검증 로깅
+        input_keys = list(kwargs.keys()) if kwargs else []
+        self.logger.info(f"🎯 [Step 2] 입력 데이터 - 키 개수: {len(input_keys)}, 키들: {input_keys}")
+        
         start_time = time.time()
         errors = []
         stage_status = {}
@@ -3867,6 +3883,24 @@ class PoseEstimationStep(BaseStepMixin):
             if is_success:
                 final_result.update(result)
             
+            # 🔥 세션 데이터 저장 로깅 추가
+            print(f"🔥 [세션 추적] Step 2 완료 - session_id: {session_id}")
+            print(f"🔥 [세션 추적] Step 2 결과 데이터 크기: {len(str(final_result))} bytes")
+            print(f"🔥 [세션 추적] Step 2 성공 여부: {is_success}")
+            print(f"🔥 [세션 추적] Step 2 처리 시간: {processing_time:.3f}초")
+            
+            # 🔥 다음 스텝을 위한 데이터 준비 로깅
+            if is_success and 'pose_result' in final_result:
+                pose_data = final_result['pose_result']
+                print(f"🔥 [세션 추적] Step 2 → Step 3 전달 데이터 준비:")
+                print(f"🔥 [세션 추적] - pose_result 타입: {type(pose_data)}")
+                print(f"🔥 [세션 추적] - pose_result 키들: {list(pose_data.keys()) if isinstance(pose_data, dict) else 'N/A'}")
+                if isinstance(pose_data, dict) and 'keypoints' in pose_data:
+                    keypoints = pose_data['keypoints']
+                    print(f"🔥 [세션 추적] - keypoints 타입: {type(keypoints)}")
+                    if isinstance(keypoints, list):
+                        print(f"🔥 [세션 추적] - keypoints 개수: {len(keypoints)}")
+            
             return final_result
             
         except Exception as e:
@@ -4067,6 +4101,7 @@ class PoseEstimationStep(BaseStepMixin):
                 self.logger.info(f"✅ [Step 2] 최종 이미지 타입: {type(image)}")
             
             if image is None:
+                self.logger.warning("⚠️ [Step 2] 입력 이미지 없음 - Mock 모드로 폴백 (실제 AI 모델이 사용되지 않음)")
                 print(f"🔥 [디버깅] 입력 이미지 없음 - Mock 모드로 폴백")
                 # Mock 모드로 폴백
                 simulated_keypoints = [
@@ -4121,6 +4156,7 @@ class PoseEstimationStep(BaseStepMixin):
                 loaded = self._load_pose_models_via_central_hub()
                 print(f"🔥 [디버깅] 재로딩 결과: {loaded}개 모델")
                 if loaded == 0:
+                    self.logger.warning("⚠️ [Step 2] 포즈 모델 로딩 실패 - Mock 모드로 폴백 (실제 AI 모델이 사용되지 않음)")
                     print(f"🔥 [디버깅] 포즈 모델 로딩 실패 - Mock 모드로 폴백")
                     # Mock 모드로 폴백
                     simulated_keypoints = [
@@ -4840,6 +4876,9 @@ class PoseEstimationStep(BaseStepMixin):
                     'body_orientation': self._calculate_body_orientation(keypoints)
                 }
             }
+            
+            # 🔥 키포인트 카운트 로깅 추가
+            self.logger.info(f"🎯 [Step 2] 최종 결과 - keypoints_count: {len(keypoints) if keypoints else 0}, confidence: {best_confidence:.3f}")
             
             # 🔥 최종 결과 반환 (API 응답용)
             final_result = {

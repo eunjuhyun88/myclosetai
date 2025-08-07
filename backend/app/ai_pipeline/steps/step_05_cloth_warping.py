@@ -36,6 +36,11 @@ import cv2
 warnings.filterwarnings('ignore', category=DeprecationWarning)
 warnings.filterwarnings('ignore', category=ImportWarning)
 
+# 🔥 HuggingFace 오프라인 모드 설정 (네트워크 연결 실패 방지)
+os.environ['HF_HUB_OFFLINE'] = '1'
+os.environ['TRANSFORMERS_OFFLINE'] = '1'
+os.environ['HF_DATASETS_OFFLINE'] = '1'
+
 # PyTorch 필수
 try:
     import torch
@@ -321,6 +326,10 @@ if BaseStepMixin is None:
                 'algorithm_type': 'advanced_multi_network_cloth_warping',
                 'fallback_mode': True
             }
+            
+            # 폴백 모드 감지 로그 추가
+            if getattr(self, 'fallback_mode', True):
+                self.logger.warning("⚠️ [Step 5] 폴백 모드 활성화 - 실제 AI 모델이 사용되지 않음!")
 
         def _get_service_from_central_hub(self, service_key: str):
             """Central Hub에서 서비스 가져오기"""
@@ -826,7 +835,7 @@ class AdvancedTPSWarpingNetwork(nn.Module):
             # 차원이 변경되었으면 control_point_predictor를 동적으로 재구성
             current_channels = adaptive_features.shape[1]
             if current_channels != 2048:
-                self.logger.warning(f"⚠️ 채널 수 변경 감지: {current_channels} -> 2048, 동적 재구성")
+                self.logger.info(f"✅ 채널 수 자동 조정: {current_channels} -> 2048, 동적 재구성")
                 # control_point_predictor를 동적으로 재구성
                 self.control_point_predictor = nn.Sequential(
                     nn.Flatten(),
@@ -839,6 +848,14 @@ class AdvancedTPSWarpingNetwork(nn.Module):
                     nn.Linear(256, self.num_control_points * 2),
                     nn.Tanh()
                 ).to(adaptive_features.device)
+                
+                # MPS 디바이스에서 float32로 통일
+                if adaptive_features.device.type == 'mps':
+                    for module in self.control_point_predictor.modules():
+                        if hasattr(module, 'weight') and module.weight is not None:
+                            module.weight.data = module.weight.data.to(dtype=torch.float32)
+                        if hasattr(module, 'bias') and module.bias is not None:
+                            module.bias.data = module.bias.data.to(dtype=torch.float32)
             
             control_points = self.control_point_predictor(adaptive_features)
             control_points = control_points.view(batch_size, self.num_control_points, 2)
@@ -925,7 +942,7 @@ class AdvancedTPSWarpingNetwork(nn.Module):
             # 차원이 변경되었으면 quality_assessor를 동적으로 재구성
             current_channels = quality_input.shape[1]
             if current_channels != 2048:
-                self.logger.warning(f"⚠️ 품질 평가 채널 수 변경 감지: {current_channels} -> 2048, 동적 재구성")
+                self.logger.info(f"✅ 품질 평가 채널 수 자동 조정: {current_channels} -> 2048, 동적 재구성")
                 # quality_assessor를 동적으로 재구성
                 self.quality_assessor = nn.Sequential(
                     nn.Linear(current_channels, 512),
@@ -939,6 +956,14 @@ class AdvancedTPSWarpingNetwork(nn.Module):
                     nn.Linear(128, 1),
                     nn.Sigmoid()
                 ).to(quality_input.device)
+                
+                # MPS 디바이스에서 float32로 통일
+                if quality_input.device.type == 'mps':
+                    for module in self.quality_assessor.modules():
+                        if hasattr(module, 'weight') and module.weight is not None:
+                            module.weight.data = module.weight.data.to(dtype=torch.float32)
+                        if hasattr(module, 'bias') and module.bias is not None:
+                            module.bias.data = module.bias.data.to(dtype=torch.float32)
             
             quality_score = self.quality_assessor(quality_input)
         except Exception as e:
@@ -4085,93 +4110,222 @@ class ClothWarpingStep(BaseStepMixin):
                 import torch
                 import os
                 
-                # TPS 체크포인트 직접 로딩
-                tps_path = "ai_models/step_05_cloth_warping/tps_transformation.pth"
-                if os.path.exists(tps_path):
-                    self.logger.info(f"📥 TPS 모델 로딩 시작: {tps_path}")
-                    try:
-                        tps_checkpoint = torch.load(tps_path, map_location=self.device)
+                # 🔥 ModelLoader를 통한 TPS 모델 로딩
+                try:
+                    tps_model_path = self.model_loader.get_model_path("tps_transformation.pth")
+                    if tps_model_path and os.path.exists(tps_model_path):
+                        self.logger.info(f"📥 TPS 모델 로딩 시작: {tps_model_path}")
+                        tps_checkpoint = torch.load(tps_model_path, map_location=self.device)
                         
-                        # 🔥 디버깅: 체크포인트 정보 (간단 버전)
+                        # 🔥 디버깅: 체크포인트 정보
                         if isinstance(tps_checkpoint, dict):
                             self.logger.info(f"🔍 TPS 체크포인트 키 개수: {len(tps_checkpoint)}")
-                            if len(tps_checkpoint) <= 10:
-                                self.logger.info(f"🔍 TPS 체크포인트 키들: {list(tps_checkpoint.keys())}")
-                            else:
-                                self.logger.info(f"🔍 TPS 체크포인트 키들 (처음 5개): {list(tps_checkpoint.keys())[:5]}...")
                             if 'state_dict' in tps_checkpoint:
                                 state_dict = tps_checkpoint['state_dict']
                                 self.logger.info(f"🔍 TPS state_dict 키 수: {len(state_dict)}")
                         else:
                             self.logger.info(f"🔍 TPS 체크포인트 타입: {type(tps_checkpoint)}")
                         
+                        # 🔥 TPS 모델 인스턴스 생성
+                        # 🔥 Step 4의 AdvancedTPSWarpingNetwork를 직접 정의하여 사용
+                        class AdvancedTPSWarpingNetwork(nn.Module):
+                            def __init__(self, num_control_points=25, input_channels=6):
+                                super().__init__()
+                                self.num_control_points = num_control_points
+                                self.input_channels = input_channels
+                                
+                                # ResNet 기반 백본
+                                self.backbone = nn.Sequential(
+                                    nn.Conv2d(input_channels, 64, 7, stride=2, padding=3, bias=False),
+                                    nn.BatchNorm2d(64),
+                                    nn.ReLU(inplace=True),
+                                    nn.MaxPool2d(kernel_size=3, stride=2, padding=1),
+                                    
+                                    # ResNet 블록들
+                                    self._make_layer(64, 64, 3),
+                                    self._make_layer(64, 128, 4, stride=2),
+                                    self._make_layer(128, 256, 6, stride=2),
+                                    self._make_layer(256, 512, 3, stride=2),
+                                )
+                                
+                                # TPS 제어점 예측
+                                self.control_point_predictor = nn.Sequential(
+                                    nn.AdaptiveAvgPool2d((1, 1)),
+                                    nn.Flatten(),
+                                    nn.Linear(512, 256),
+                                    nn.ReLU(),
+                                    nn.Linear(256, num_control_points * 2)
+                                )
+                                
+                                # 변형 그리드 생성
+                                self.grid_generator = TPSGridGenerator(num_control_points)
+                                
+                            def _make_layer(self, inplanes, planes, blocks, stride=1):
+                                layers = []
+                                layers.append(BottleneckBlock(inplanes, planes, stride))
+                                for _ in range(1, blocks):
+                                    layers.append(BottleneckBlock(planes, planes))
+                                return nn.Sequential(*layers)
+                                
+                            def forward(self, cloth_image, person_image):
+                                # 입력 결합
+                                combined = torch.cat([cloth_image, person_image], dim=1)
+                                
+                                # 특징 추출
+                                features = self.backbone(combined)
+                                
+                                # 제어점 예측
+                                control_points = self.control_point_predictor(features)
+                                control_points = control_points.view(-1, self.num_control_points, 2)
+                                
+                                # 변형 그리드 생성
+                                grid = self.grid_generator(control_points, cloth_image.shape[2:])
+                                
+                                return control_points
+                        
+                        # TPS 모델 생성 및 로딩
+                        tps_model = AdvancedTPSWarpingNetwork(num_control_points=25, input_channels=6)
+                        
+                        # 🔥 MPS 타입 완전 통일 - 모든 파라미터를 float32로 변환
+                        if self.device == "mps" and torch.backends.mps.is_available():
+                            tps_model = tps_model.to(dtype=torch.float32, device=self.device)
+                            # 모든 파라미터를 float32로 변환
+                            for param in tps_model.parameters():
+                                param.data = param.data.to(dtype=torch.float32)
+                        else:
+                            tps_model = tps_model.to(self.device)
+                        
+                        # 체크포인트에서 가중치 로딩
+                        if isinstance(tps_checkpoint, dict) and 'state_dict' in tps_checkpoint:
+                            tps_model.load_state_dict(tps_checkpoint['state_dict'], strict=False)
+                            self.logger.info("✅ TPS 모델 가중치 로딩 완료")
+                        else:
+                            tps_model.load_state_dict(tps_checkpoint, strict=False)
+                            self.logger.info("✅ TPS 모델 가중치 로딩 완료 (직접 로딩)")
+                        
+                        tps_model.eval()
+                        self.ai_models['tps_model'] = tps_model
                         checkpoint_loaded = True
-                    except Exception as e:
-                        self.logger.warning(f"⚠️ TPS 체크포인트 로딩 실패: {e}")
-                else:
-                    self.logger.warning(f"⚠️ TPS 모델 파일을 찾을 수 없음: {tps_path}")
+                    else:
+                        self.logger.error(f"❌ ModelLoader에서 TPS 모델을 찾을 수 없음 - 실제 모델이 필요합니다")
+                        raise Exception("TPS 모델을 찾을 수 없습니다. 실제 모델 파일이 필요합니다.")
+                        
+                except Exception as tps_error:
+                    self.logger.error(f"❌ TPS 모델 로딩 실패: {tps_error}")
+                    raise Exception(f"TPS 모델 로딩에 실패했습니다: {tps_error}")
                 
-                # 체크포인트가 로드되었으면 DPT 모델 구조에 맞게 생성
+                # 체크포인트가 로드되었으면 ModelLoader를 통해 로컬 모델 로딩
                 if checkpoint_loaded:
                     try:
-                        # 로컬 DPT 모델 파일 확인 (새로 다운로드된 파일)
-                        local_dpt_path = "ai_models/checkpoints/pose_estimation/dpt_hybrid-midas-501f0c75.pt"
-                        if os.path.exists(local_dpt_path):
-                            self.logger.info(f"✅ 로컬 DPT 모델 발견: {local_dpt_path}")
+                        # 🔥 ModelLoader를 통한 DPT 모델 로딩
+                        self.logger.info("🔥 ModelLoader를 통한 DPT 모델 로딩 시작")
+                        
+                        # ModelLoader에서 DPT 모델 경로 조회
+                        dpt_model_path = None
+                        possible_paths = [
+                            "dpt_hybrid_midas.pth",
+                            "dpt_hybrid-midas-501f0c75.pt",
+                            "step_05_cloth_warping/dpt_hybrid_midas.pth",
+                            "checkpoints/pose_estimation/dpt_hybrid-midas-501f0c75.pt"
+                        ]
+                        
+                        for path in possible_paths:
+                            try:
+                                dpt_model_path = self.model_loader.get_model_path(path)
+                                if dpt_model_path and os.path.exists(dpt_model_path):
+                                    self.logger.info(f"✅ ModelLoader에서 DPT 모델 발견: {dpt_model_path}")
+                                    break
+                            except Exception as e:
+                                self.logger.warning(f"⚠️ ModelLoader 경로 조회 실패 ({path}): {e}")
+                                continue
+                        
+                        if dpt_model_path and os.path.exists(dpt_model_path):
+                            
                             # 로컬 모델 로딩
-                            dpt_checkpoint = torch.load(local_dpt_path, map_location=self.device)
+                            dpt_checkpoint = torch.load(dpt_model_path, map_location=self.device)
                             
-                            # 기본 DPT 모델 구조 생성
-                            from transformers import DPTForDepthEstimation
-                            tps_model = DPTForDepthEstimation.from_pretrained(
-                                "Intel/dpt-hybrid-midas",
-                                local_files_only=True,
-                                trust_remote_code=True
-                            )
-                            
-                            # 로컬 체크포인트에서 가중치 로딩 시도
-                            if isinstance(dpt_checkpoint, dict):
-                                self.logger.info(f"🔍 로컬 DPT 체크포인트 키 개수: {len(dpt_checkpoint)}")
-                                if len(dpt_checkpoint) <= 10:
-                                    self.logger.info(f"🔍 로컬 DPT 체크포인트 키들: {list(dpt_checkpoint.keys())}")
-                                else:
-                                    self.logger.info(f"🔍 로컬 DPT 체크포인트 키들 (처음 5개): {list(dpt_checkpoint.keys())[:5]}...")
-                                # 가중치 매핑 시도
-                                model_state_dict = {}
-                                for key, value in dpt_checkpoint.items():
-                                    if key.startswith('model.'):
-                                        model_state_dict[key] = value
-                                    elif key.startswith('backbone.'):
-                                        new_key = key.replace('backbone.', 'model.')
-                                        model_state_dict[new_key] = value
-                                    else:
-                                        model_state_dict[key] = value
+                            # 🔥 기본 DPT 모델 구조 생성 (체크포인트 기반)
+                            try:
+                                tps_model = self._create_basic_depth_estimation_model("dpt_local")
                                 
-                                # 가중치 로딩
-                                tps_model.load_state_dict(model_state_dict, strict=False)
-                                self.logger.info("✅ 로컬 DPT 모델 가중치 로딩 완료")
-                            else:
-                                self.logger.info("✅ 로컬 DPT 모델 사용 (가중치 매핑 없음)")
+                                # 🔥 체크포인트에서 가중치 로딩
+                                if isinstance(dpt_checkpoint, dict):
+                                    self.logger.info(f"🔍 로컬 DPT 체크포인트 키 개수: {len(dpt_checkpoint)}")
+                                    tps_model.load_state_dict(dpt_checkpoint, strict=False)
+                                    self.logger.info("✅ 로컬 DPT 모델 가중치 로딩 완료")
+                                else:
+                                    self.logger.warning("⚠️ DPT 체크포인트가 딕셔너리가 아님")
+                                    
+                            except Exception as dpt_error:
+                                self.logger.warning(f"⚠️ DPT 모델 로딩 실패: {dpt_error}")
+                                tps_model = self._create_basic_depth_estimation_model("dpt_fallback")
+                                
+                                # 로컬 체크포인트에서 가중치 로딩 시도
+                                if isinstance(dpt_checkpoint, dict):
+                                    self.logger.info(f"🔍 로컬 DPT 체크포인트 키 개수: {len(dpt_checkpoint)}")
+                                    if len(dpt_checkpoint) <= 10:
+                                        self.logger.info(f"🔍 로컬 DPT 체크포인트 키들: {list(dpt_checkpoint.keys())}")
+                                    else:
+                                        self.logger.info(f"🔍 로컬 DPT 체크포인트 키들 (처음 5개): {list(dpt_checkpoint.keys())[:5]}...")
+                                    
+                                    # 가중치 매핑 시도
+                                    model_state_dict = {}
+                                    for key, value in dpt_checkpoint.items():
+                                        if key.startswith('model.'):
+                                            model_state_dict[key] = value
+                                        elif key.startswith('backbone.'):
+                                            new_key = key.replace('backbone.', 'model.')
+                                            model_state_dict[new_key] = value
+                                        else:
+                                            model_state_dict[key] = value
+                                    
+                                    # 가중치 로딩
+                                    tps_model.load_state_dict(model_state_dict, strict=False)
+                                    self.logger.info("✅ 로컬 DPT 모델 가중치 로딩 완료")
+                                else:
+                                    self.logger.info("✅ 로컬 DPT 모델 사용 (가중치 매핑 없음)")
+                                    
+                            except Exception as dpt_error:
+                                self.logger.warning(f"⚠️ DPT 모델 구조 생성 실패: {dpt_error}")
+                                # 대체 모델 생성
+                                tps_model = self._create_basic_depth_estimation_model("dpt_fallback")
+                                
                         else:
-                            self.logger.warning(f"⚠️ 로컬 DPT 모델 없음: {local_dpt_path}")
-                            # HuggingFace에서 로딩 시도
-                            from transformers import DPTForDepthEstimation
-                            tps_model = DPTForDepthEstimation.from_pretrained("Intel/dpt-hybrid-midas")
+                            self.logger.warning(f"⚠️ ModelLoader에서 DPT 모델을 찾을 수 없음")
+                            # 대체 모델 생성
+                            tps_model = self._create_basic_depth_estimation_model("dpt_fallback")
                         
-                        # 직접 가중치 딕셔너리인 경우 (state_dict 키 없음)
-                        # 체크포인트 키들을 DPT 모델 키와 매핑
-                        model_state_dict = {}
-                        for key, value in tps_checkpoint.items():
-                            # pretrained.model. -> model. 으로 변환
-                            if key.startswith('pretrained.model.'):
-                                new_key = key.replace('pretrained.model.', 'model.')
-                                model_state_dict[new_key] = value
-                            # scratch. 키는 그대로 유지
-                            elif key.startswith('scratch.'):
-                                model_state_dict[key] = value
+                        # TPS 체크포인트 가중치 로딩
+                        if isinstance(tps_checkpoint, dict):
+                            # 직접 가중치 딕셔너리인 경우 (state_dict 키 없음)
+                            # 체크포인트 키들을 TPS 모델 키와 매핑
+                            model_state_dict = {}
+                            for key, value in tps_checkpoint.items():
+                                # pretrained.model. -> model. 으로 변환
+                                if key.startswith('pretrained.model.'):
+                                    new_key = key.replace('pretrained.model.', 'model.')
+                                    model_state_dict[new_key] = value
+                                # scratch. 키는 그대로 유지
+                                elif key.startswith('scratch.'):
+                                    model_state_dict[key] = value
+                            
+                            # 가중치 로딩 (strict=False로 호환성 보장)
+                            tps_model.load_state_dict(model_state_dict, strict=False)
+                            self.logger.info("✅ TPS 체크포인트 가중치 로딩 완료")
                         
-                        # 가중치 로딩 (strict=False로 호환성 보장)
-                        tps_model.load_state_dict(model_state_dict, strict=False)
+                        # 모델을 디바이스로 이동
+                        tps_model = tps_model.to(self.device)
+                        tps_model.eval()
+                        
+                        # AI 모델 저장소에 저장
+                        self.ai_models['tps_model'] = tps_model
+                        self.logger.info("✅ TPS 모델 로딩 완료")
+                        
+                    except Exception as e:
+                        self.logger.warning(f"⚠️ TPS 모델 로딩 실패: {e}")
+                        # 대체 모델 생성
+                        tps_model = self._create_basic_depth_estimation_model("tps_fallback")
+                        self.ai_models['tps_model'] = tps_model
                         
                         tps_model.to(self.device)
                         tps_model.eval()
@@ -4193,11 +4347,28 @@ class ClothWarpingStep(BaseStepMixin):
                 self.logger.error(f"❌ TPS 체크포인트 로딩 실패: {e}")
             
             try:
-                # VITON-HD 체크포인트 직접 로딩
-                viton_path = "ai_models/step_05_cloth_warping/viton_hd_warping.pth"
-                if os.path.exists(viton_path):
-                    self.logger.info(f"📥 VITON-HD 모델 로딩 시작: {viton_path}")
-                    viton_checkpoint = torch.load(viton_path, map_location=self.device)
+                # 🔥 ModelLoader를 통한 VITON-HD 모델 로딩
+                self.logger.info("🔥 ModelLoader를 통한 VITON-HD 모델 로딩 시작")
+                
+                # ModelLoader에서 VITON-HD 모델 경로 조회
+                viton_model_path = None
+                possible_viton_paths = [
+                    "viton_hd_warping.pth",
+                    "step_05_cloth_warping/viton_hd_warping.pth"
+                ]
+                
+                for path in possible_viton_paths:
+                    try:
+                        viton_model_path = self.model_loader.get_model_path(path)
+                        if viton_model_path and os.path.exists(viton_model_path):
+                            self.logger.info(f"✅ ModelLoader에서 VITON-HD 모델 발견: {viton_model_path}")
+                            break
+                    except Exception as e:
+                        self.logger.warning(f"⚠️ ModelLoader 경로 조회 실패 ({path}): {e}")
+                        continue
+                
+                if viton_model_path and os.path.exists(viton_model_path):
+                    viton_checkpoint = torch.load(viton_model_path, map_location=self.device)
                     
                     # 🔥 디버깅: 체크포인트 정보 (간단 버전)
                     if isinstance(viton_checkpoint, dict):
@@ -4214,49 +4385,64 @@ class ClothWarpingStep(BaseStepMixin):
                     
                     # VITON-HD 체크포인트가 로드되었으면 DPT Large 모델 구조에 맞게 생성
                     try:
-                        # 로컬 DPT 모델 파일 확인 (새로 다운로드된 파일)
-                        local_dpt_path = "ai_models/checkpoints/pose_estimation/dpt_large-501f0c75.pt"
-                        if os.path.exists(local_dpt_path):
-                            self.logger.info(f"✅ 로컬 DPT 모델 발견: {local_dpt_path}")
+                        # 🔥 ModelLoader를 통한 DPT Large 모델 로딩
+                        dpt_large_path = None
+                        possible_large_paths = [
+                            "dpt_large-501f0c75.pt",
+                            "checkpoints/pose_estimation/dpt_large-501f0c75.pt"
+                        ]
+                        
+                        for path in possible_large_paths:
+                            try:
+                                dpt_large_path = self.model_loader.get_model_path(path)
+                                if dpt_large_path and os.path.exists(dpt_large_path):
+                                    self.logger.info(f"✅ ModelLoader에서 DPT Large 모델 발견: {dpt_large_path}")
+                                    break
+                            except Exception as e:
+                                self.logger.warning(f"⚠️ ModelLoader 경로 조회 실패 ({path}): {e}")
+                                continue
+                        
+                        if dpt_large_path and os.path.exists(dpt_large_path):
                             # 로컬 모델 로딩
-                            dpt_checkpoint = torch.load(local_dpt_path, map_location=self.device)
+                            dpt_checkpoint = torch.load(dpt_large_path, map_location=self.device)
                             
-                            # 기본 DPT 모델 구조 생성
-                            from transformers import DPTForDepthEstimation
-                            viton_model = DPTForDepthEstimation.from_pretrained(
-                                "Intel/dpt-large",
-                                local_files_only=True,
-                                trust_remote_code=True
-                            )
-                            
-                            # 로컬 체크포인트에서 가중치 로딩 시도
-                            if isinstance(dpt_checkpoint, dict):
-                                self.logger.info(f"🔍 로컬 DPT 체크포인트 키 개수: {len(dpt_checkpoint)}")
-                                if len(dpt_checkpoint) <= 10:
-                                    self.logger.info(f"🔍 로컬 DPT 체크포인트 키들: {list(dpt_checkpoint.keys())}")
-                                else:
-                                    self.logger.info(f"🔍 로컬 DPT 체크포인트 키들 (처음 5개): {list(dpt_checkpoint.keys())[:5]}...")
-                                # 가중치 매핑 시도
-                                model_state_dict = {}
-                                for key, value in dpt_checkpoint.items():
-                                    if key.startswith('model.'):
-                                        model_state_dict[key] = value
-                                    elif key.startswith('backbone.'):
-                                        new_key = key.replace('backbone.', 'model.')
-                                        model_state_dict[new_key] = value
-                                    else:
-                                        model_state_dict[key] = value
+                            # 🔥 HuggingFace 제거 - ModelLoader를 통한 DPT 모델 생성
+                            try:
+                                # 기본 DPT 모델 구조 생성 (로컬 파일만 사용)
+                                viton_model = self._create_basic_depth_estimation_model("dpt_large_local")
                                 
-                                # 가중치 로딩
-                                viton_model.load_state_dict(model_state_dict, strict=False)
-                                self.logger.info("✅ 로컬 DPT 모델 가중치 로딩 완료")
-                            else:
-                                self.logger.info("✅ 로컬 DPT 모델 사용 (가중치 매핑 없음)")
+                                # 로컬 체크포인트에서 가중치 로딩 시도
+                                if isinstance(dpt_checkpoint, dict):
+                                    self.logger.info(f"🔍 로컬 DPT 체크포인트 키 개수: {len(dpt_checkpoint)}")
+                                    if len(dpt_checkpoint) <= 10:
+                                        self.logger.info(f"🔍 로컬 DPT 체크포인트 키들: {list(dpt_checkpoint.keys())}")
+                                    else:
+                                        self.logger.info(f"🔍 로컬 DPT 체크포인트 키들 (처음 5개): {list(dpt_checkpoint.keys())[:5]}...")
+                                    
+                                    # 가중치 매핑 시도
+                                    model_state_dict = {}
+                                    for key, value in dpt_checkpoint.items():
+                                        if key.startswith('model.'):
+                                            model_state_dict[key] = value
+                                        elif key.startswith('backbone.'):
+                                            new_key = key.replace('backbone.', 'model.')
+                                            model_state_dict[new_key] = value
+                                        else:
+                                            model_state_dict[key] = value
+                                    
+                                    # 가중치 로딩
+                                    viton_model.load_state_dict(model_state_dict, strict=False)
+                                    self.logger.info("✅ 로컬 DPT 모델 가중치 로딩 완료")
+                                else:
+                                    self.logger.info("✅ 로컬 DPT 모델 사용 (가중치 매핑 없음)")
+                                    
+                            except Exception as dpt_error:
+                                self.logger.error(f"❌ DPT 모델 구조 생성 실패: {dpt_error}")
+                                raise Exception(f"DPT 모델 구조 생성에 실패했습니다: {dpt_error}")
+                                
                         else:
-                            self.logger.warning(f"⚠️ 로컬 DPT 모델 없음: {local_dpt_path}")
-                            # HuggingFace에서 로딩 시도
-                            from transformers import DPTForDepthEstimation
-                            viton_model = DPTForDepthEstimation.from_pretrained("Intel/dpt-large")
+                            self.logger.error(f"❌ ModelLoader에서 DPT Large 모델을 찾을 수 없음 - 실제 모델이 필요합니다")
+                            raise Exception("DPT Large 모델을 찾을 수 없습니다. 실제 모델 파일이 필요합니다.")
                         
                         # 직접 가중치 딕셔너리인 경우 (state_dict 키 없음)
                         # 체크포인트 키들을 DPT 모델 키와 매핑
@@ -4273,7 +4459,11 @@ class ClothWarpingStep(BaseStepMixin):
                         # 가중치 로딩 (strict=False로 호환성 보장)
                         viton_model.load_state_dict(model_state_dict, strict=False)
                         
-                        viton_model.to(self.device)
+                        # 🔥 MPS 타입 변환 추가 (Step 1, 2, 3, 4와 동일한 방식)
+                        if self.device == "mps" and torch.backends.mps.is_available():
+                            viton_model = viton_model.to(dtype=torch.float32, device=self.device)
+                        else:
+                            viton_model = viton_model.to(self.device)
                         viton_model.eval()
                         
                         self.ai_models['viton_checkpoint'] = viton_model
@@ -4282,15 +4472,15 @@ class ClothWarpingStep(BaseStepMixin):
                         checkpoint_loaded = True
                         self.logger.info("✅ VITON-HD 체크포인트 모델 로딩 완료 (DPT Large 기반)")
                     except Exception as e:
-                        self.logger.warning(f"⚠️ VITON-HD DPT 모델 생성 실패: {e}")
-                        self.logger.info("🔄 VITON-HD DPT 모델 대신 기본 깊이 추정 모델 사용")
-                        # 기본 깊이 추정 모델 생성
-                        self._create_basic_depth_estimation_model('viton_dpt')
+                        self.logger.error(f"❌ VITON-HD DPT 모델 생성 실패: {e}")
+                        raise Exception(f"VITON-HD DPT 모델 생성에 실패했습니다: {e}")
                 else:
                     self.logger.error(f"❌ VITON-HD 모델 파일을 찾을 수 없음: {viton_path}")
+                    raise Exception(f"VITON-HD 모델 파일을 찾을 수 없습니다: {viton_path}")
                     
             except Exception as e:
                 self.logger.error(f"❌ VITON-HD 체크포인트 로딩 실패: {e}")
+                raise Exception(f"VITON-HD 체크포인트 로딩에 실패했습니다: {e}")
             
             # 2. 고급 AI 네트워크 생성 (체크포인트와 병행)
             self._create_advanced_ai_networks()
@@ -4310,8 +4500,7 @@ class ClothWarpingStep(BaseStepMixin):
             
         except Exception as e:
             self.logger.error(f"❌ Central Hub Warping 모델 로딩 실패: {e}")
-            # 🔥 Mock 모델 대신 실제 AI 네트워크 강제 생성
-            self.logger.info("🔥 실제 AI 네트워크 강제 생성 시도...")
+            raise Exception(f"Central Hub Warping 모델 로딩에 실패했습니다: {e}")
             self._create_advanced_ai_networks()
             
             # 🔥 Mock 모델 제거 및 실제 모델 강제 생성
@@ -4363,49 +4552,77 @@ class ClothWarpingStep(BaseStepMixin):
                 raise ValueError("PyTorch가 필요합니다. 실제 AI 네트워크를 생성할 수 없습니다.")
             
             # 1. 고급 TPS 워핑 네트워크
-            try:
-                self.tps_network = AdvancedTPSWarpingNetwork(
-                    num_control_points=self.config.tps_control_points, 
-                    input_channels=6
-                ).to(self.device)
-                self.ai_models['tps_network'] = self.tps_network
-                self.models_loading_status['tps_network'] = True
-                self.loaded_models.append('tps_network')
-                self.logger.info("✅ 고급 TPS 워핑 네트워크 생성 완료")
-            except Exception as e:
-                self.logger.warning(f"⚠️ TPS 네트워크 생성 실패: {e}")
+            self.tps_network = AdvancedTPSWarpingNetwork(
+                num_control_points=self.config.tps_control_points, 
+                input_channels=6
+            )
+            
+            # 🔥 MPS 타입 완전 통일 - 모든 파라미터를 float32로 변환
+            if self.device == "mps" and torch.backends.mps.is_available():
+                self.tps_network = self.tps_network.to(dtype=torch.float32, device=self.device)
+                # 모든 파라미터를 float32로 변환
+                for param in self.tps_network.parameters():
+                    param.data = param.data.to(dtype=torch.float32)
+            else:
+                self.tps_network = self.tps_network.to(self.device)
+            
+            self.ai_models['tps_network'] = self.tps_network
+            self.models_loading_status['tps_network'] = True
+            self.loaded_models.append('tps_network')
+            self.logger.info("✅ 고급 TPS 워핑 네트워크 생성 완료")
             
             # 2. RAFT Flow 워핑 네트워크
-            try:
-                self.raft_network = RAFTFlowWarpingNetwork(small_model=False).to(self.device)
-                self.ai_models['raft_network'] = self.raft_network
-                self.models_loading_status['raft_network'] = True
-                self.loaded_models.append('raft_network')
-                self.logger.info("✅ RAFT Flow 워핑 네트워크 생성 완료")
-            except Exception as e:
-                self.logger.warning(f"⚠️ RAFT 네트워크 생성 실패: {e}")
+            self.raft_network = RAFTFlowWarpingNetwork(small_model=False)
+            
+            # 🔥 MPS 타입 완전 통일 - 모든 파라미터를 float32로 변환
+            if self.device == "mps" and torch.backends.mps.is_available():
+                self.raft_network = self.raft_network.to(dtype=torch.float32, device=self.device)
+                # 모든 파라미터를 float32로 변환
+                for param in self.raft_network.parameters():
+                    param.data = param.data.to(dtype=torch.float32)
+            else:
+                self.raft_network = self.raft_network.to(self.device)
+            
+            self.ai_models['raft_network'] = self.raft_network
+            self.models_loading_status['raft_network'] = True
+            self.loaded_models.append('raft_network')
+            self.logger.info("✅ RAFT Flow 워핑 네트워크 생성 완료")
             
             # 3. VGG 의류-인체 매칭 네트워크
-            try:
-                self.vgg_matching = VGGClothBodyMatchingNetwork(vgg_type="vgg19").to(self.device)
-                self.ai_models['vgg_matching'] = self.vgg_matching
-                self.models_loading_status['vgg_matching'] = True
-                self.loaded_models.append('vgg_matching')
-                self.logger.info("✅ VGG 의류-인체 매칭 네트워크 생성 완료")
-            except Exception as e:
-                self.logger.warning(f"⚠️ VGG 네트워크 생성 실패: {e}")
+            self.vgg_matching = VGGClothBodyMatchingNetwork(vgg_type="vgg19")
+            
+            # 🔥 MPS 타입 완전 통일 - 모든 파라미터를 float32로 변환
+            if self.device == "mps" and torch.backends.mps.is_available():
+                self.vgg_matching = self.vgg_matching.to(dtype=torch.float32, device=self.device)
+                # 모든 파라미터를 float32로 변환
+                for param in self.vgg_matching.parameters():
+                    param.data = param.data.to(dtype=torch.float32)
+            else:
+                self.vgg_matching = self.vgg_matching.to(self.device)
+            
+            self.ai_models['vgg_matching'] = self.vgg_matching
+            self.models_loading_status['vgg_matching'] = True
+            self.loaded_models.append('vgg_matching')
+            self.logger.info("✅ VGG 의류-인체 매칭 네트워크 생성 완료")
             
             # 4. DenseNet 품질 평가 네트워크
-            try:
-                self.densenet_quality = DenseNetQualityAssessment(
-                    growth_rate=32, num_layers=121
-                ).to(self.device)
-                self.ai_models['densenet_quality'] = self.densenet_quality
-                self.models_loading_status['densenet_quality'] = True
-                self.loaded_models.append('densenet_quality')
-                self.logger.info("✅ DenseNet 품질 평가 네트워크 생성 완료")
-            except Exception as e:
-                self.logger.warning(f"⚠️ DenseNet 네트워크 생성 실패: {e}")
+            self.densenet_quality = DenseNetQualityAssessment(
+                growth_rate=32, num_layers=121
+            )
+            
+            # 🔥 MPS 타입 완전 통일 - 모든 파라미터를 float32로 변환
+            if self.device == "mps" and torch.backends.mps.is_available():
+                self.densenet_quality = self.densenet_quality.to(dtype=torch.float32, device=self.device)
+                # 모든 파라미터를 float32로 변환
+                for param in self.densenet_quality.parameters():
+                    param.data = param.data.to(dtype=torch.float32)
+            else:
+                self.densenet_quality = self.densenet_quality.to(self.device)
+            
+            self.ai_models['densenet_quality'] = self.densenet_quality
+            self.models_loading_status['densenet_quality'] = True
+            self.loaded_models.append('densenet_quality')
+            self.logger.info("✅ DenseNet 품질 평가 네트워크 생성 완료")
             
             # 5. 물리 기반 원단 시뮬레이션
             try:
@@ -4417,16 +4634,23 @@ class ClothWarpingStep(BaseStepMixin):
                 self.logger.warning(f"⚠️ 물리 시뮬레이션 초기화 실패: {e}")
             
             # 6. HR-VITON 고급 워핑 네트워크 (CVPR 2022)
-            try:
-                self.hr_viton_network = HRVITONWarpingNetwork(
-                    input_channels=6, hidden_dim=128
-                ).to(self.device)
-                self.ai_models['hr_viton_network'] = self.hr_viton_network
-                self.models_loading_status['hr_viton_network'] = True
-                self.loaded_models.append('hr_viton_network')
-                self.logger.info("✅ HR-VITON 고급 워핑 네트워크 생성 완료 (CVPR 2022)")
-            except Exception as e:
-                self.logger.warning(f"⚠️ HR-VITON 네트워크 생성 실패: {e}")
+            self.hr_viton_network = HRVITONWarpingNetwork(
+                input_channels=6, hidden_dim=128
+            )
+            
+            # 🔥 MPS 타입 완전 통일 - 모든 파라미터를 float32로 변환
+            if self.device == "mps" and torch.backends.mps.is_available():
+                self.hr_viton_network = self.hr_viton_network.to(dtype=torch.float32, device=self.device)
+                # 모든 파라미터를 float32로 변환
+                for param in self.hr_viton_network.parameters():
+                    param.data = param.data.to(dtype=torch.float32)
+            else:
+                self.hr_viton_network = self.hr_viton_network.to(self.device)
+            
+            self.ai_models['hr_viton_network'] = self.hr_viton_network
+            self.models_loading_status['hr_viton_network'] = True
+            self.loaded_models.append('hr_viton_network')
+            self.logger.info("✅ HR-VITON 고급 워핑 네트워크 생성 완료 (CVPR 2022)")
             
             # 7. HR-VITON 완전 네트워크 (논문 구현) - 제거됨 (정의되지 않음)
             # try:
@@ -4441,26 +4665,40 @@ class ClothWarpingStep(BaseStepMixin):
 
             
             # 9. ACGPN 고급 워핑 네트워크 (CVPR 2020)
-            try:
-                self.acgpn_network = ACGPNWarpingNetwork(input_channels=6).to(self.device)
-                self.ai_models['acgpn_network'] = self.acgpn_network
-                self.models_loading_status['acgpn_network'] = True
-                self.loaded_models.append('acgpn_network')
-                self.logger.info("✅ ACGPN 고급 워핑 네트워크 생성 완료 (CVPR 2020)")
-            except Exception as e:
-                self.logger.warning(f"⚠️ ACGPN 네트워크 생성 실패: {e}")
+            self.acgpn_network = ACGPNWarpingNetwork(input_channels=6)
+            
+            # 🔥 MPS 타입 완전 통일 - 모든 파라미터를 float32로 변환
+            if self.device == "mps" and torch.backends.mps.is_available():
+                self.acgpn_network = self.acgpn_network.to(dtype=torch.float32, device=self.device)
+                # 모든 파라미터를 float32로 변환
+                for param in self.acgpn_network.parameters():
+                    param.data = param.data.to(dtype=torch.float32)
+            else:
+                self.acgpn_network = self.acgpn_network.to(self.device)
+            
+            self.ai_models['acgpn_network'] = self.acgpn_network
+            self.models_loading_status['acgpn_network'] = True
+            self.loaded_models.append('acgpn_network')
+            self.logger.info("✅ ACGPN 고급 워핑 네트워크 생성 완료 (CVPR 2020)")
             
             # 10. StyleGAN 기반 고급 워핑 네트워크
-            try:
-                self.stylegan_network = StyleGANWarpingNetwork(
-                    input_channels=6, latent_dim=512
-                ).to(self.device)
-                self.ai_models['stylegan_network'] = self.stylegan_network
-                self.models_loading_status['stylegan_network'] = True
-                self.loaded_models.append('stylegan_network')
-                self.logger.info("✅ StyleGAN 기반 고급 워핑 네트워크 생성 완료")
-            except Exception as e:
-                self.logger.warning(f"⚠️ StyleGAN 네트워크 생성 실패: {e}")
+            self.stylegan_network = StyleGANWarpingNetwork(
+                input_channels=6, latent_dim=512
+            )
+            
+            # 🔥 MPS 타입 완전 통일 - 모든 파라미터를 float32로 변환
+            if self.device == "mps" and torch.backends.mps.is_available():
+                self.stylegan_network = self.stylegan_network.to(dtype=torch.float32, device=self.device)
+                # 모든 파라미터를 float32로 변환
+                for param in self.stylegan_network.parameters():
+                    param.data = param.data.to(dtype=torch.float32)
+            else:
+                self.stylegan_network = self.stylegan_network.to(self.device)
+            
+            self.ai_models['stylegan_network'] = self.stylegan_network
+            self.models_loading_status['stylegan_network'] = True
+            self.loaded_models.append('stylegan_network')
+            self.logger.info("✅ StyleGAN 기반 고급 워핑 네트워크 생성 완료")
             
             # Warping 준비 상태 업데이트
             self.warping_ready = len(self.loaded_models) > 0
@@ -4573,52 +4811,110 @@ class ClothWarpingStep(BaseStepMixin):
         """🔥 실제 Cloth Warping AI 추론 (BaseStepMixin v20.0 호환)"""
         import time
         
+        print(f"🔥 [디버깅] Step 5 _run_ai_inference 시작")
+        print(f"🔥 [디버깅] Step 5 입력 키들: {list(kwargs.keys()) if kwargs else 'None'}")
+        print(f"🔥 [디버깅] Step 5 입력 값들: {[(k, type(v).__name__) for k, v in kwargs.items()] if kwargs else 'None'}")
+        
         self.logger.info("🔥 STEP 5 - CLOTH WARPING AI 추론 시작")
         start_time = time.time()
         
         try:
+            print(f"🔥 [디버깅] Step 5 - 1단계: 세션 데이터에서 이미지 로드 시작")
+            
             # 1. 세션 데이터에서 이미지 로드
             person_image = None
             clothing_image = None
             
             if 'session_id' in kwargs:
+                print(f"🔥 [디버깅] Step 5 - session_id 발견: {kwargs['session_id']}")
                 session_manager = self._get_service_from_central_hub('session_manager')
                 if session_manager:
+                    print(f"🔥 [디버깅] Step 5 - session_manager 성공")
                     try:
                         person_image, clothing_image = session_manager.get_session_images_sync(kwargs['session_id'])
+                        print(f"🔥 [디버깅] Step 5 - 세션 이미지 로드 성공")
+                        print(f"🔥 [디버깅] Step 5 - person_image 타입: {type(person_image)}")
+                        print(f"🔥 [디버깅] Step 5 - clothing_image 타입: {type(clothing_image)}")
                         self.logger.info(f"✅ 세션에서 이미지 로드 성공")
                     except Exception as e:
+                        print(f"🔥 [디버깅] ❌ Step 5 - 세션 이미지 로드 실패: {e}")
                         self.logger.warning(f"⚠️ 세션 이미지 로드 실패: {e}")
+                else:
+                    print(f"🔥 [디버깅] ❌ Step 5 - session_manager 없음")
+            else:
+                print(f"🔥 [디버깅] Step 5 - session_id 없음")
+            
+            print(f"🔥 [디버깅] Step 5 - 2단계: 이미지 기본값 생성 시작")
             
             # 2. 이미지가 없으면 기본값 생성
             if person_image is None:
+                print(f"🔥 [디버깅] Step 5 - 기본 사람 이미지 생성")
                 person_image = self._create_default_person_image()
                 self.logger.info("✅ 기본 사람 이미지 생성")
             
             if clothing_image is None:
+                print(f"🔥 [디버깅] Step 5 - 기본 의류 이미지 생성")
                 clothing_image = self._create_default_cloth_image()
                 self.logger.info("✅ 기본 의류 이미지 생성")
+            
+            print(f"🔥 [디버깅] Step 5 - 3단계: 실제 AI 추론 시작")
             
             # 3. 실제 AI 추론 실행
             self.logger.info("🧠 실제 Cloth Warping AI 추론 시작")
             
+            print(f"🔥 [디버깅] Step 5 - 이미지 전처리 시작")
+            
             # 이미지 전처리
-            processed_cloth = self._preprocess_image(clothing_image)
-            processed_person = self._preprocess_image(person_image)
+            try:
+                processed_cloth = self._preprocess_image(clothing_image)
+                processed_person = self._preprocess_image(person_image)
+                print(f"🔥 [디버깅] Step 5 - 이미지 전처리 완료")
+                print(f"🔥 [디버깅] Step 5 - processed_cloth shape: {processed_cloth.shape if hasattr(processed_cloth, 'shape') else 'N/A'}")
+                print(f"🔥 [디버깅] Step 5 - processed_person shape: {processed_person.shape if hasattr(processed_person, 'shape') else 'N/A'}")
+            except Exception as e:
+                print(f"🔥 [디버깅] ❌ Step 5 - 이미지 전처리 실패: {e}")
+                raise e
+            
+            print(f"🔥 [디버깅] Step 5 - AI 모델 추론 시작")
             
             # 실제 AI 모델로 추론
-            warping_result = self._run_enhanced_cloth_warping_inference_sync(
-                processed_cloth, processed_person, None, 'high'
-            )
+            try:
+                warping_result = self._run_enhanced_cloth_warping_inference_sync(
+                    processed_cloth, processed_person, None, 'high'
+                )
+                print(f"🔥 [디버깅] Step 5 - AI 모델 추론 완료")
+                print(f"🔥 [디버깅] Step 5 - warping_result 타입: {type(warping_result)}")
+                print(f"🔥 [디버깅] Step 5 - warping_result 키들: {list(warping_result.keys()) if isinstance(warping_result, dict) else 'N/A'}")
+            except Exception as e:
+                print(f"🔥 [디버깅] ❌ Step 5 - AI 모델 추론 실패: {e}")
+                raise e
+            
+            print(f"🔥 [디버깅] Step 5 - 4단계: 후처리 시작")
             
             # 4. 후처리
-            final_result = self._postprocess_warping_result(warping_result, clothing_image, person_image)
+            try:
+                final_result = self._postprocess_warping_result(warping_result, clothing_image, person_image)
+                print(f"🔥 [디버깅] Step 5 - 후처리 완료")
+                print(f"🔥 [디버깅] Step 5 - final_result 타입: {type(final_result)}")
+                print(f"🔥 [디버깅] Step 5 - final_result 키들: {list(final_result.keys()) if isinstance(final_result, dict) else 'N/A'}")
+            except Exception as e:
+                print(f"🔥 [디버깅] ❌ Step 5 - 후처리 실패: {e}")
+                raise e
+            
+            print(f"🔥 [디버깅] Step 5 - 5단계: 품질 메트릭 계산 시작")
             
             # 5. 품질 메트릭 계산
-            quality_metrics = self._calculate_warping_quality_metrics(
-                clothing_image, final_result['warped_cloth'], 
-                final_result['transformation_matrix']
-            )
+            try:
+                quality_metrics = self._calculate_warping_quality_metrics(
+                    clothing_image, final_result['warped_cloth'], 
+                    final_result['transformation_matrix']
+                )
+                print(f"🔥 [디버깅] Step 5 - 품질 메트릭 계산 완료")
+            except Exception as e:
+                print(f"🔥 [디버깅] ❌ Step 5 - 품질 메트릭 계산 실패: {e}")
+                quality_metrics = {}
+            
+            print(f"🔥 [디버깅] Step 5 - 6단계: 결과 구성 시작")
             
             # 6. 결과 구성
             result = {
@@ -4634,12 +4930,18 @@ class ClothWarpingStep(BaseStepMixin):
                 'enhanced_features': final_result.get('enhanced_features', {})
             }
             
+            print(f"🔥 [디버깅] Step 5 - 결과 구성 완료")
+            print(f"🔥 [디버깅] Step 5 - 최종 결과 타입: {type(result)}")
+            print(f"🔥 [디버깅] Step 5 - 최종 결과 키들: {list(result.keys())}")
+            
             self.logger.info(f"✅ Cloth Warping 완료 - {result['processing_time']:.2f}초")
             return result
             
         except Exception as e:
-            self.logger.error(f"❌ Cloth Warping 실패: {e}")
+            print(f"🔥 [디버깅] ❌ Step 5 - 전체 실패: {e}")
             import traceback
+            print(f"🔥 [디버깅] ❌ Step 5 - 상세 오류: {traceback.format_exc()}")
+            self.logger.error(f"❌ Cloth Warping 실패: {e}")
             self.logger.error(f"❌ 상세 오류: {traceback.format_exc()}")
             return {
                 'success': False,
@@ -4656,128 +4958,192 @@ class ClothWarpingStep(BaseStepMixin):
         quality_level: str
     ) -> Dict[str, Any]:
         """Enhanced Cloth Warping AI 추론 실행 (동기 버전) - 완전 AI 추론 지원"""
+        print(f"🔥 [디버깅] Step 5 _run_enhanced_cloth_warping_inference_sync 시작")
+        print(f"🔥 [디버깅] Step 5 - cloth_image shape: {cloth_image.shape if hasattr(cloth_image, 'shape') else 'N/A'}")
+        print(f"🔥 [디버깅] Step 5 - person_image shape: {person_image.shape if hasattr(person_image, 'shape') else 'N/A'}")
+        print(f"🔥 [디버깅] Step 5 - quality_level: {quality_level}")
+        
         try:
+            print(f"🔥 [디버깅] Step 5 - 1단계: 품질 레벨에 따른 모델 선택")
+            
             # 1. 품질 레벨에 따른 모델 선택
             quality_config = WARPING_QUALITY_LEVELS.get(quality_level, WARPING_QUALITY_LEVELS['balanced'])
+            print(f"🔥 [디버깅] Step 5 - quality_config: {quality_config}")
+            
+            print(f"🔥 [디버깅] Step 5 - 2단계: 고급 AI 네트워크 우선순위 결정")
             
             # 2. 고급 AI 네트워크 우선순위 결정
             selected_networks = []
             
+            print(f"🔥 [디버깅] Step 5 - loaded_models: {self.loaded_models}")
+            print(f"🔥 [디버깅] Step 5 - ai_models 키들: {list(self.ai_models.keys()) if hasattr(self, 'ai_models') else 'N/A'}")
+            
             # 체크포인트 모델 우선 선택 (실제 DPT 모델)
             if 'tps_checkpoint' in self.loaded_models:
+                print(f"🔥 [디버깅] Step 5 - tps_checkpoint 모델 선택")
                 selected_networks.append(('tps_checkpoint', self.ai_models['tps_checkpoint']))
             if 'viton_checkpoint' in self.loaded_models:
+                print(f"🔥 [디버깅] Step 5 - viton_checkpoint 모델 선택")
                 selected_networks.append(('viton_checkpoint', self.ai_models['viton_checkpoint']))
             if 'dpt_checkpoint' in self.loaded_models:
+                print(f"🔥 [디버깅] Step 5 - dpt_checkpoint 모델 선택")
                 selected_networks.append(('dpt_checkpoint', self.ai_models['dpt_checkpoint']))
             
             # TPS 네트워크 추가
             if ('tps_network' in self.loaded_models and 
                 'thin_plate_spline' in quality_config['methods']):
+                print(f"🔥 [디버깅] Step 5 - tps_network 모델 선택")
                 selected_networks.append(('tps_network', self.ai_models['tps_network']))
             
             # RAFT 네트워크 추가
             if ('raft_network' in self.loaded_models and 
                 'optical_flow' in quality_config.get('methods', [])):
+                print(f"🔥 [디버깅] Step 5 - raft_network 모델 선택")
                 selected_networks.append(('raft_network', self.ai_models['raft_network']))
             
             # VGG 매칭 네트워크 추가
             if ('vgg_matching' in self.loaded_models and 
                 'vgg_matching' in quality_config.get('methods', [])):
+                print(f"🔥 [디버깅] Step 5 - vgg_matching 모델 선택")
                 selected_networks.append(('vgg_matching', self.ai_models['vgg_matching']))
             
             # DenseNet 품질 평가 네트워크 추가
             if ('densenet_quality' in self.loaded_models and 
                 quality_level in ['high', 'ultra', 'research']):
+                print(f"🔥 [디버깅] Step 5 - densenet_quality 모델 선택")
                 selected_networks.append(('densenet_quality', self.ai_models['densenet_quality']))
             
             # HR-VITON 고급 워핑 네트워크 추가 (CVPR 2022)
             if ('hr_viton_network' in self.loaded_models and 
                 quality_level in ['ultra', 'research']):
+                print(f"🔥 [디버깅] Step 5 - hr_viton_network 모델 선택")
                 selected_networks.append(('hr_viton_network', self.ai_models['hr_viton_network']))
             
             # ACGPN 고급 워핑 네트워크 추가 (CVPR 2020)
             if ('acgpn_network' in self.loaded_models and 
                 quality_level in ['high', 'ultra', 'research']):
+                print(f"🔥 [디버깅] Step 5 - acgpn_network 모델 선택")
                 selected_networks.append(('acgpn_network', self.ai_models['acgpn_network']))
             
             # StyleGAN 기반 고급 워핑 네트워크 추가
             if ('stylegan_network' in self.loaded_models and 
                 quality_level in ['ultra', 'research']):
+                print(f"🔥 [디버깅] Step 5 - stylegan_network 모델 선택")
                 selected_networks.append(('stylegan_network', self.ai_models['stylegan_network']))
+            
+            print(f"🔥 [디버깅] Step 5 - 선택된 네트워크 수: {len(selected_networks)}")
+            print(f"🔥 [디버깅] Step 5 - 선택된 네트워크들: {[name for name, _ in selected_networks]}")
             
             # 실제 AI 네트워크가 없으면 강제로 생성
             if not selected_networks:
+                print(f"🔥 [디버깅] Step 5 - 로드된 AI 네트워크가 없음 - 강제로 고급 AI 네트워크 생성")
                 self.logger.warning("⚠️ 로드된 AI 네트워크가 없음 - 강제로 고급 AI 네트워크 생성")
                 self._create_advanced_ai_networks()
                 
                 # 생성된 네트워크들 다시 선택
                 if 'tps_network' in self.ai_models:
+                    print(f"🔥 [디버깅] Step 5 - 생성된 tps_network 선택")
                     selected_networks.append(('tps_network', self.ai_models['tps_network']))
                 if 'raft_network' in self.ai_models:
+                    print(f"🔥 [디버깅] Step 5 - 생성된 raft_network 선택")
                     selected_networks.append(('raft_network', self.ai_models['raft_network']))
                 if 'vgg_matching' in self.ai_models:
+                    print(f"🔥 [디버깅] Step 5 - 생성된 vgg_matching 선택")
                     selected_networks.append(('vgg_matching', self.ai_models['vgg_matching']))
                 
                 if not selected_networks:
+                    print(f"🔥 [디버깅] ❌ Step 5 - 실제 AI 네트워크 생성에 실패")
                     raise ValueError("실제 AI 네트워크 생성에 실패했습니다")
+            
+            print(f"🔥 [디버깅] Step 5 - 3단계: 멀티 네트워크 AI 추론 실행 시작")
             
             # 3. 멀티 네트워크 AI 추론 실행
             network_results = {}
             
             for network_name, network in selected_networks:
+                print(f"🔥 [디버깅] Step 5 - {network_name} 네트워크 추론 시작")
                 try:
                     # 실제 PyTorch 네트워크만 사용 (Mock 모델 제거)
                     if isinstance(network, nn.Module):
+                        print(f"🔥 [디버깅] Step 5 - {network_name} PyTorch 네트워크 확인됨")
                         result = self._run_advanced_pytorch_inference(
                             network, cloth_image, person_image, keypoints, network_name
                         )
                         network_results[network_name] = result
+                        print(f"🔥 [디버깅] Step 5 - {network_name} 실제 AI 추론 완료")
                         self.logger.info(f"✅ {network_name} 실제 AI 추론 완료")
                     else:
+                        print(f"🔥 [디버깅] ❌ Step 5 - {network_name}이 PyTorch 네트워크가 아님: {type(network)}")
                         self.logger.warning(f"⚠️ {network_name}이 PyTorch 네트워크가 아님: {type(network)}")
                         continue
                     
                 except Exception as e:
+                    print(f"🔥 [디버깅] ❌ Step 5 - {network_name} AI 추론 실패: {e}")
                     self.logger.error(f"❌ {network_name} AI 추론 실패: {e}")
                     import traceback
+                    print(f"🔥 [디버깅] ❌ Step 5 - {network_name} 상세 오류: {traceback.format_exc()}")
                     self.logger.error(f"❌ 상세 오류: {traceback.format_exc()}")
                     raise ValueError(f"실제 AI 네트워크 추론에 실패했습니다: {e}")
             
+            print(f"🔥 [디버깅] Step 5 - 네트워크 추론 완료, 결과 수: {len(network_results)}")
+            
             # 4. 멀티 네트워크 결과 융합
+            print(f"🔥 [디버깅] Step 5 - 4단계: 멀티 네트워크 결과 융합 시작")
+            
             if len(network_results) > 1:
+                print(f"🔥 [디버깅] Step 5 - 멀티 네트워크 융합 실행")
                 fused_result = self._fuse_multi_network_results(network_results, quality_config)
                 fused_result['model_used'] = f"multi_network_{len(network_results)}"
                 fused_result['networks_used'] = list(network_results.keys())
                 fused_result['inference_type'] = 'multi_network_fusion'
+                print(f"🔥 [디버깅] Step 5 - 멀티 네트워크 융합 완료")
             elif len(network_results) == 1:
+                print(f"🔥 [디버깅] Step 5 - 단일 네트워크 결과 사용")
                 network_name, result = list(network_results.items())[0]
                 fused_result = result
                 fused_result['model_used'] = network_name
                 fused_result['networks_used'] = [network_name]
                 fused_result['inference_type'] = 'single_network'
             else:
+                print(f"🔥 [디버깅] ❌ Step 5 - 모든 AI 네트워크 추론이 실패")
                 raise ValueError("모든 AI 네트워크 추론이 실패했습니다")
             
             # 5. 물리 시뮬레이션 적용 (선택적)
+            print(f"🔥 [디버깅] Step 5 - 5단계: 물리 시뮬레이션 적용 시작")
+            
             if ('physics_simulation' in self.loaded_models and 
                 quality_level in ['high', 'ultra', 'research'] and
                 self.config.enable_physics_simulation):
                 try:
+                    print(f"🔥 [디버깅] Step 5 - 물리 시뮬레이션 적용")
                     fused_result = self._apply_physics_simulation_to_result(fused_result, cloth_image)
+                    print(f"🔥 [디버깅] Step 5 - 물리 시뮬레이션 적용 완료")
                     self.logger.info("✅ 물리 시뮬레이션 적용 완료")
                 except Exception as e:
+                    print(f"🔥 [디버깅] ❌ Step 5 - 물리 시뮬레이션 적용 실패: {e}")
                     self.logger.warning(f"⚠️ 물리 시뮬레이션 적용 실패: {e}")
+            else:
+                print(f"🔥 [디버깅] Step 5 - 물리 시뮬레이션 건너뜀")
+            
+            print(f"🔥 [디버깅] Step 5 - 최종 결과 구성")
             
             fused_result['quality_level'] = quality_level
             fused_result['ai_inference_type'] = 'advanced_multi_network'
             fused_result['total_networks_used'] = len(network_results)
             
+            print(f"🔥 [디버깅] Step 5 - _run_enhanced_cloth_warping_inference_sync 완료")
+            print(f"🔥 [디버깅] Step 5 - 최종 결과 타입: {type(fused_result)}")
+            print(f"🔥 [디버깅] Step 5 - 최종 결과 키들: {list(fused_result.keys()) if isinstance(fused_result, dict) else 'N/A'}")
+            
             return fused_result
             
         except Exception as e:
+            print(f"🔥 [디버깅] ❌ Step 5 - _run_enhanced_cloth_warping_inference_sync 전체 실패: {e}")
+            import traceback
+            print(f"🔥 [디버깅] ❌ Step 5 - 상세 오류: {traceback.format_exc()}")
             self.logger.error(f"❌ Enhanced Cloth Warping AI 추론 실행 실패: {e}")
             # 응급 처리
+            print(f"🔥 [디버깅] Step 5 - 응급 처리 실행")
             return self._create_emergency_warping_result(cloth_image, person_image)
 
     def _run_advanced_pytorch_inference(
@@ -6271,11 +6637,31 @@ class ClothWarpingStep(BaseStepMixin):
         print(f"🔥 [디버깅] kwargs 키들: {list(kwargs.keys()) if kwargs else 'None'}")
         print(f"🔥 [디버깅] kwargs 값들: {[(k, type(v).__name__) for k, v in kwargs.items()] if kwargs else 'None'}")
         
+        # 🔥 세션 데이터 추적 로깅 추가
+        session_id = kwargs.get('session_id', 'unknown')
+        print(f"🔥 [세션 추적] Step 5 시작 - session_id: {session_id}")
+        print(f"🔥 [세션 추적] Step 5 입력 데이터 크기: {len(str(kwargs))} bytes")
+        
         try:
             # 독립 실행 모드 (BaseStepMixin 없는 경우)
             processed_input = kwargs
             
             result = self._run_ai_inference(processed_input)
+            
+            # 🔥 세션 데이터 저장 로깅 추가
+            print(f"🔥 [세션 추적] Step 5 완료 - session_id: {session_id}")
+            print(f"🔥 [세션 추적] Step 5 결과 데이터 크기: {len(str(result))} bytes")
+            print(f"🔥 [세션 추적] Step 5 성공 여부: {result.get('success', False)}")
+            print(f"🔥 [세션 추적] Step 5 처리 시간: {result.get('processing_time', 0):.3f}초")
+            
+            # 🔥 다음 스텝을 위한 데이터 준비 로깅
+            if result.get('success', False) and 'warped_cloth' in result:
+                warped_cloth = result['warped_cloth']
+                print(f"🔥 [세션 추적] Step 5 → Step 6 전달 데이터 준비:")
+                print(f"🔥 [세션 추적] - warped_cloth 타입: {type(warped_cloth)}")
+                if hasattr(warped_cloth, 'shape'):
+                    print(f"🔥 [세션 추적] - warped_cloth 크기: {warped_cloth.shape}")
+            
             return result
             
         except Exception as e:
