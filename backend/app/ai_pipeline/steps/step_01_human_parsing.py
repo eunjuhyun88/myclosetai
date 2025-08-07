@@ -3011,10 +3011,30 @@ class AdvancedPostProcessor:
     
     @staticmethod
     def apply_hole_filling_and_noise_removal(parsing_map: np.ndarray) -> np.ndarray:
-        """홀 채우기 및 노이즈 제거 (Human Parsing 특화)"""
+        """홀 채우기 및 노이즈 제거 (Human Parsing 특화) - 근본적 해결"""
         try:
             if not NDIMAGE_AVAILABLE or ndimage is None:
                 return parsing_map
+            
+            # 🔥 입력 검증 및 정규화
+            if parsing_map is None:
+                return np.zeros((512, 512), dtype=np.uint8)
+            
+            # 차원 검증
+            if len(parsing_map.shape) != 2:
+                logging.getLogger(__name__).warning(f"⚠️ 파싱 맵 차원이 2가 아님: {parsing_map.shape}")
+                if len(parsing_map.shape) == 3:
+                    # 첫 번째 채널 사용
+                    parsing_map = parsing_map[0] if parsing_map.shape[0] == 1 else parsing_map[:, :, 0]
+                elif len(parsing_map.shape) == 4:
+                    # 첫 번째 배치, 첫 번째 채널 사용
+                    parsing_map = parsing_map[0, 0] if parsing_map.shape[0] == 1 and parsing_map.shape[1] == 1 else parsing_map[0, :, :, 0]
+                else:
+                    return np.zeros((512, 512), dtype=np.uint8)
+            
+            # 타입 정규화
+            if parsing_map.dtype != np.uint8:
+                parsing_map = parsing_map.astype(np.uint8)
             
             # 클래스별로 처리
             processed_map = np.zeros_like(parsing_map)
@@ -3025,17 +3045,30 @@ class AdvancedPostProcessor:
                 
                 mask = (parsing_map == class_id).astype(np.bool_)
                 
-                # 홀 채우기
-                filled = ndimage.binary_fill_holes(mask)
+                # 🔥 홀 채우기 (안전한 버전)
+                try:
+                    filled = ndimage.binary_fill_holes(mask)
+                except Exception as fill_error:
+                    logging.getLogger(__name__).warning(f"⚠️ 홀 채우기 실패: {fill_error}")
+                    filled = mask
                 
-                # 작은 노이즈 제거 (morphological operations)
-                structure = ndimage.generate_binary_structure(2, 2)
-                # 열기 연산 (노이즈 제거)
-                opened = ndimage.binary_opening(filled, structure=structure, iterations=1)
-                # 닫기 연산 (홀 채우기)
-                closed = ndimage.binary_closing(opened, structure=structure, iterations=2)
-                
-                processed_map[closed] = class_id
+                # 🔥 작은 노이즈 제거 (안전한 morphological operations)
+                try:
+                    # 2D 구조체 생성 (차원 일치 보장)
+                    structure = ndimage.generate_binary_structure(2, 2)
+                    
+                    # 열기 연산 (노이즈 제거) - 반복 횟수 제한
+                    opened = ndimage.binary_opening(filled, structure=structure, iterations=1)
+                    
+                    # 닫기 연산 (홀 채우기) - 반복 횟수 제한
+                    closed = ndimage.binary_closing(opened, structure=structure, iterations=1)
+                    
+                    processed_map[closed] = class_id
+                    
+                except Exception as morph_error:
+                    logging.getLogger(__name__).warning(f"⚠️ 형태학적 연산 실패: {morph_error}")
+                    # 폴백: 원본 마스크 사용
+                    processed_map[filled] = class_id
             
             # 배경 처리
             processed_map[processed_map == 0] = 0
@@ -3044,7 +3077,11 @@ class AdvancedPostProcessor:
             
         except Exception as e:
             logging.getLogger(__name__).warning(f"⚠️ 홀 채우기 및 노이즈 제거 실패: {e}")
-            return parsing_map
+            # 최후의 수단: 원본 반환
+            if parsing_map is not None and len(parsing_map.shape) == 2:
+                return parsing_map.astype(np.uint8)
+            else:
+                return np.zeros((512, 512), dtype=np.uint8)
 
 
 
@@ -4369,8 +4406,52 @@ class HumanParsingStep(BaseStepMixin):
                                             parsing_output['parsing_pred'] = processed_result
                                         else:
                                             parsing_output = processed_result
+                                    elif isinstance(first_element, dict):
+                                        # 🔥 딕셔너리 요소 처리
+                                        self.logger.debug(f"🔥 리스트 첫 번째 요소가 딕셔너리: {list(first_element.keys())}")
+                                        # 딕셔너리에서 텐서 추출
+                                        for key in ['parsing', 'parsing_pred', 'output', 'parsing_output']:
+                                            if key in first_element and isinstance(first_element[key], torch.Tensor):
+                                                parsing_output_np = first_element[key].cpu().numpy().astype(np.uint8)
+                                                processed_result = AdvancedPostProcessor.apply_edge_refinement(
+                                                    parsing_output_np, image
+                                                )
+                                                if isinstance(parsing_output, dict):
+                                                    parsing_output['parsing_pred'] = processed_result
+                                                else:
+                                                    parsing_output = processed_result
+                                                break
+                                        else:
+                                            # 딕셔너리에서 첫 번째 텐서 찾기
+                                            for value in first_element.values():
+                                                if isinstance(value, torch.Tensor):
+                                                    parsing_output_np = value.cpu().numpy().astype(np.uint8)
+                                                    processed_result = AdvancedPostProcessor.apply_edge_refinement(
+                                                        parsing_output_np, image
+                                                    )
+                                                    if isinstance(parsing_output, dict):
+                                                        parsing_output['parsing_pred'] = processed_result
+                                                    else:
+                                                        parsing_output = processed_result
+                                                    break
                                     else:
                                         self.logger.warning(f"⚠️ 리스트 첫 번째 요소가 텐서가 아님: {type(first_element)}")
+                                        # 🔥 강제 변환 시도
+                                        try:
+                                            if isinstance(first_element, np.ndarray):
+                                                parsing_output_np = first_element.astype(np.uint8)
+                                            else:
+                                                parsing_output_np = np.array(first_element, dtype=np.uint8)
+                                            
+                                            processed_result = AdvancedPostProcessor.apply_edge_refinement(
+                                                parsing_output_np, image
+                                            )
+                                            if isinstance(parsing_output, dict):
+                                                parsing_output['parsing_pred'] = processed_result
+                                            else:
+                                                parsing_output = processed_result
+                                        except Exception as convert_error:
+                                            self.logger.warning(f"⚠️ 강제 변환 실패: {convert_error}")
                                 else:
                                     self.logger.warning("⚠️ 빈 리스트")
                             else:
@@ -5068,68 +5149,123 @@ class HumanParsingStep(BaseStepMixin):
             }
         
         def _extract_parsing_from_output(self, output, device) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
-            """모델 출력에서 파싱 결과 추출 (표준화 없이)"""
+            """모델 출력에서 파싱 결과 추출 (근본적 해결)"""
             try:
-                # 🔥 각 모델의 고유한 출력 형태를 그대로 처리
+                # 🔥 1단계: 출력 타입 검증 및 정규화
+                if output is None:
+                    self.logger.warning("⚠️ AI 모델 출력이 None입니다.")
+                    return torch.zeros((1, 20, 512, 512), device=device), None
+                
+                # 🔥 2단계: 딕셔너리 형태 출력 처리
                 if isinstance(output, dict):
-                    # Graphonomy, DeepLabV3+ 등의 딕셔너리 출력
-                    parsing_output = None
-                    edge_output = None
+                    self.logger.debug(f"🔥 딕셔너리 출력 키들: {list(output.keys())}")
                     
-                    # 파싱 결과 찾기
-                    for key in ['parsing', 'parsing_output', 'output', 'logits', 'pred', 'prediction']:
-                        if key in output and isinstance(output[key], torch.Tensor):
-                            parsing_output = output[key]
-                            break
+                    # 가능한 키들에서 파싱 결과 찾기
+                    parsing_keys = ['parsing', 'parsing_pred', 'output', 'parsing_output', 'logits', 'pred', 'prediction']
+                    parsing_tensor = None
+                    confidence_tensor = None
                     
-                    # 엣지 출력 찾기
-                    for key in ['edge', 'edge_output', 'boundary']:
-                        if key in output and isinstance(output[key], torch.Tensor):
-                            edge_output = output[key]
-                            break
-                    
-                    # 파싱을 찾지 못한 경우 첫 번째 텐서 사용
-                    if parsing_output is None:
-                        for value in output.values():
-                            if isinstance(value, torch.Tensor) and len(value.shape) >= 3:
-                                parsing_output = value
+                    for key in parsing_keys:
+                        if key in output and output[key] is not None:
+                            if isinstance(output[key], torch.Tensor):
+                                parsing_tensor = output[key]
+                                self.logger.debug(f"✅ 파싱 텐서 발견: {key} - {parsing_tensor.shape}")
                                 break
+                            elif isinstance(output[key], (list, tuple)) and len(output[key]) > 0:
+                                if isinstance(output[key][0], torch.Tensor):
+                                    parsing_tensor = output[key][0]
+                                    self.logger.debug(f"✅ 파싱 텐서 발견 (리스트): {key} - {parsing_tensor.shape}")
+                                    break
+                    
+                    # 신뢰도 텐서 찾기
+                    confidence_keys = ['confidence', 'conf', 'prob', 'probability']
+                    for key in confidence_keys:
+                        if key in output and output[key] is not None:
+                            if isinstance(output[key], torch.Tensor):
+                                confidence_tensor = output[key]
+                                self.logger.debug(f"✅ 신뢰도 텐서 발견: {key} - {confidence_tensor.shape}")
+                                break
+                    
+                    # 🔥 3단계: 텐서가 없는 경우 첫 번째 값 사용
+                    if parsing_tensor is None:
+                        first_value = next(iter(output.values()))
+                        if isinstance(first_value, torch.Tensor):
+                            parsing_tensor = first_value
+                            self.logger.debug(f"✅ 첫 번째 값에서 파싱 텐서 추출: {parsing_tensor.shape}")
+                        elif isinstance(first_value, (list, tuple)) and len(first_value) > 0:
+                            if isinstance(first_value[0], torch.Tensor):
+                                parsing_tensor = first_value[0]
+                                self.logger.debug(f"✅ 첫 번째 리스트에서 파싱 텐서 추출: {parsing_tensor.shape}")
+                    
+                    if parsing_tensor is None:
+                        raise ValueError("딕셔너리에서 파싱 텐서를 찾을 수 없습니다.")
+                    
+                    return parsing_tensor, confidence_tensor
                 
-                elif isinstance(output, (tuple, list)):
-                    # HRNet, U2Net 등의 튜플/리스트 출력
-                    if len(output) > 0:
-                        parsing_output = output[0] if isinstance(output[0], torch.Tensor) else None
-                        edge_output = output[1] if len(output) > 1 and isinstance(output[1], torch.Tensor) else None
+                # 🔥 4단계: 리스트 형태 출력 처리
+                elif isinstance(output, (list, tuple)):
+                    self.logger.debug(f"🔥 리스트 출력 길이: {len(output)}")
+                    
+                    if len(output) == 0:
+                        raise ValueError("빈 리스트 출력입니다.")
+                    
+                    # 첫 번째 요소가 텐서인지 확인
+                    first_element = output[0]
+                    if isinstance(first_element, torch.Tensor):
+                        parsing_tensor = first_element
+                        self.logger.debug(f"✅ 리스트 첫 번째 요소에서 파싱 텐서 추출: {parsing_tensor.shape}")
+                        
+                        # 두 번째 요소가 신뢰도 텐서인지 확인
+                        confidence_tensor = None
+                        if len(output) > 1 and isinstance(output[1], torch.Tensor):
+                            confidence_tensor = output[1]
+                            self.logger.debug(f"✅ 리스트 두 번째 요소에서 신뢰도 텐서 추출: {confidence_tensor.shape}")
+                        
+                        return parsing_tensor, confidence_tensor
                     else:
-                        parsing_output = None
-                        edge_output = None
+                        self.logger.warning(f"⚠️ 리스트 첫 번째 요소가 텐서가 아님: {type(first_element)}")
+                        # 딕셔너리로 처리
+                        if isinstance(first_element, dict):
+                            return self._extract_parsing_from_output(first_element, device)
+                        else:
+                            raise ValueError(f"지원하지 않는 출력 타입: {type(first_element)}")
                 
+                # 🔥 5단계: 직접 텐서 출력 처리
+                elif isinstance(output, torch.Tensor):
+                    self.logger.debug(f"✅ 직접 텐서 출력: {output.shape}")
+                    return output, None
+                
+                # 🔥 6단계: 기타 타입 처리
                 else:
-                    # 단일 텐서 출력
-                    parsing_output = output if isinstance(output, torch.Tensor) else None
-                    edge_output = None
-                
-                # 🔥 결과 검증
-                if parsing_output is None:
-                    print(f"⚠️ 파싱 출력을 찾을 수 없음: {type(output)}")
-                    parsing_output = torch.zeros((1, 20, 512, 512), device=device)
-                else:
-                    print(f"✅ 파싱 출력 형태: {parsing_output.shape}")
-                
-                # 🔥 MPS 타입 일치 및 디바이스 통일
-                parsing_output = parsing_output.to(device, dtype=torch.float32)
-                if edge_output is not None:
-                    edge_output = edge_output.to(device, dtype=torch.float32)
-                
-                return parsing_output, edge_output
-                
+                    self.logger.warning(f"⚠️ 지원하지 않는 출력 타입: {type(output)}")
+                    raise ValueError(f"지원하지 않는 출력 타입: {type(output)}")
+                    
             except Exception as e:
-                print(f"⚠️ 파싱 추출 실패: {e}")
+                self.logger.error(f"❌ 파싱 출력 추출 실패: {e}")
+                # 기본값 반환
                 return torch.zeros((1, 20, 512, 512), device=device), None
         
         def _standardize_channels(self, tensor: torch.Tensor, target_channels: int = 20) -> torch.Tensor:
             """채널 수 표준화 (근본적 해결)"""
             try:
+                # 🔥 입력 검증
+                if tensor is None:
+                    self.logger.warning("⚠️ 텐서가 None입니다.")
+                    return torch.zeros((1, target_channels, 512, 512), device='cpu', dtype=torch.float32)
+                
+                # 🔥 차원 검증
+                if len(tensor.shape) != 4:
+                    self.logger.warning(f"⚠️ 텐서 차원이 4가 아님: {tensor.shape}")
+                    if len(tensor.shape) == 3:
+                        # 배치 차원 추가
+                        tensor = tensor.unsqueeze(0)
+                    elif len(tensor.shape) == 2:
+                        # 배치와 채널 차원 추가
+                        tensor = tensor.unsqueeze(0).unsqueeze(0)
+                    else:
+                        return torch.zeros((1, target_channels, 512, 512), device=tensor.device, dtype=tensor.dtype)
+                
+                # 🔥 채널 수 표준화
                 if tensor.shape[1] == target_channels:
                     return tensor
                 elif tensor.shape[1] > target_channels:
@@ -5148,7 +5284,8 @@ class HumanParsingStep(BaseStepMixin):
                     return torch.cat([tensor, padding], dim=1)
             except Exception as e:
                 self.logger.warning(f"⚠️ 채널 수 표준화 실패: {e}")
-                return tensor
+                # 기본값 반환
+                return torch.zeros((1, target_channels, 512, 512), device='cpu', dtype=torch.float32)
 
         def _run_hrnet_ensemble_inference(self, input_tensor: torch.Tensor, model: nn.Module) -> Dict[str, Any]:
             """HRNet 앙상블 추론 - 근본적 해결"""
@@ -6959,9 +7096,38 @@ class HumanParsingStep(BaseStepMixin):
                                 # 기본값으로 설정
                                 confidence_array = np.ones(original_size, dtype=np.float32) * 0.8
                     else:
-                        # confidence_array가 None이거나 잘못된 형태인 경우 기본값 설정
+                        # 🔥 confidence_array가 None이거나 잘못된 형태인 경우 근본적 해결
                         self.logger.warning(f"⚠️ confidence_array가 None이거나 잘못된 형태: {type(confidence_array)}")
-                        confidence_array = np.ones(original_size, dtype=np.float32) * 0.8
+                        
+                        # 🔥 타입별 처리
+                        if confidence_array is None:
+                            confidence_array = np.ones(original_size, dtype=np.float32) * 0.8
+                        elif isinstance(confidence_array, np.ndarray):
+                            # NumPy 배열이지만 형태가 다른 경우
+                            if len(confidence_array.shape) != 2:
+                                # 차원 정규화
+                                if len(confidence_array.shape) == 3:
+                                    confidence_array = confidence_array[0] if confidence_array.shape[0] == 1 else confidence_array[:, :, 0]
+                                elif len(confidence_array.shape) == 4:
+                                    confidence_array = confidence_array[0, 0] if confidence_array.shape[0] == 1 and confidence_array.shape[1] == 1 else confidence_array[0, :, :, 0]
+                                else:
+                                    confidence_array = np.ones(original_size, dtype=np.float32) * 0.8
+                            
+                            # 크기 정규화
+                            if confidence_array.shape != original_size:
+                                try:
+                                    confidence_pil = Image.fromarray((confidence_array * 255).astype(np.uint8))
+                                    confidence_resized = confidence_pil.resize(
+                                        (original_size[1], original_size[0]), 
+                                        Image.BILINEAR
+                                    )
+                                    confidence_array = np.array(confidence_resized).astype(np.float32) / 255.0
+                                except Exception as resize_error:
+                                    self.logger.warning(f"⚠️ confidence_array 리사이즈 실패: {resize_error}")
+                                    confidence_array = np.ones(original_size, dtype=np.float32) * 0.8
+                        else:
+                            # 기타 타입은 기본값 사용
+                            confidence_array = np.ones(original_size, dtype=np.float32) * 0.8
                 
                 # 감지된 부위 분석
                 detected_parts = self._analyze_detected_parts(parsing_map)

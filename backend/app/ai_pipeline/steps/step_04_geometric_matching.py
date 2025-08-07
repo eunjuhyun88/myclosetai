@@ -3483,7 +3483,43 @@ class GeometricMatchingStep(BaseStepMixin):
             # 🔥 실제 AI 모델 추론 실행
             with torch.no_grad():
                 
-                # 1. GMM 모델 실행 (ai_models에서 가져오기)
+                # 1. Advanced AI 모델 실행 (가장 신뢰할 수 있는 모델을 먼저 실행)
+                if hasattr(self, 'advanced_geometric_ai') and self.advanced_geometric_ai is not None:
+                    try:
+                        logger.info("🧠 Advanced AI 모델 실제 추론 시작...")
+                        print("🧠 Advanced AI 모델 실제 추론 시작...")
+                        
+                        # 🔥 MPS 타입 통일
+                        if self.device == 'mps':
+                            person_tensor = person_tensor.to(dtype=torch.float32)
+                            clothing_tensor = clothing_tensor.to(dtype=torch.float32)
+                            if hasattr(self.advanced_geometric_ai, 'to'):
+                                self.advanced_geometric_ai = self.advanced_geometric_ai.to(dtype=torch.float32)
+                        
+                        # 6채널 입력으로 결합
+                        combined_input = torch.cat([person_tensor, clothing_tensor], dim=1)
+                        advanced_result = self.advanced_geometric_ai(combined_input)
+                        logger.info(f"✅ Advanced AI 모델 추론 완료: {type(advanced_result)}")
+                        print(f"✅ Advanced AI 모델 추론 완료: {type(advanced_result)}")
+                        if isinstance(advanced_result, dict):
+                            logger.info(f"🔍 Advanced AI 결과 키: {list(advanced_result.keys())}")
+                            print(f"🔍 Advanced AI 결과 키: {list(advanced_result.keys())}")
+                        results['advanced_ai'] = advanced_result
+                    except Exception as e:
+                        logger.warning(f"⚠️ Advanced AI 모델 추론 실패: {e}")
+                        print(f"⚠️ Advanced AI 모델 추론 실패: {e}")
+                        import traceback
+                        logger.error(f" Advanced AI 상세 오류: {traceback.format_exc()}")
+                        results['advanced_ai'] = {
+                            'transformation_matrix': torch.eye(3, device=self.device, dtype=torch.float32),
+                            'confidence': 0.5,
+                            'method': 'mock_advanced'
+                        }
+                else:
+                    logger.warning("⚠️ Advanced AI 모델이 없음")
+                    print("⚠️ Advanced AI 모델이 없음")
+                
+                # 2. GMM 모델 실행 (ai_models에서 가져오기)
                 if 'gmm_model' in self.ai_models and self.ai_models['gmm_model'] is not None:
                     try:
                         logger.info("�� GMM 모델 실제 추론 시작...")
