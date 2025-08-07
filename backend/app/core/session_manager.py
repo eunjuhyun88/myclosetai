@@ -1620,6 +1620,74 @@ class SessionManager:
                 "completed_steps": [],
                 "progress_percent": 0.0
             }
+
+    def get_session_data(self, session_id: str) -> Dict[str, Any]:
+        """세션 데이터 조회 (Step 3, 4, 5에서 사용하는 메서드)"""
+        try:
+            logger.info(f"🔥 GET_SESSION_DATA 시작: {session_id}")
+            
+            # 지연 로딩으로 세션 데이터 조회
+            session_data = self._load_session_on_demand(session_id)
+            if not session_data:
+                logger.error(f"❌ 세션을 찾을 수 없음: {session_id}")
+                return {}
+            
+            logger.info(f"✅ 세션 데이터 조회 성공: {session_id}")
+            
+            # 접근 시간 업데이트
+            session_data.update_access_time()
+            
+            # 세션 데이터를 딕셔너리로 변환
+            session_dict = session_data.to_safe_dict()
+            
+            # Step 4의 transformation_matrix를 별도로 추가 (Step 5 호환성)
+            if 'step_results' in session_dict and 'step_4_result' in session_dict['step_results']:
+                step_4_result = session_dict['step_results']['step_4_result']
+                if isinstance(step_4_result, dict):
+                    if 'transformation_matrix' in step_4_result:
+                        session_dict['step_4_transformation_matrix'] = step_4_result['transformation_matrix']
+                    if 'step_4_transformation_matrix' in step_4_result:
+                        session_dict['step_4_transformation_matrix'] = step_4_result['step_4_transformation_matrix']
+            
+            # 디버깅: step_results가 제대로 포함되었는지 확인
+            if 'step_results' in session_dict:
+                logger.info(f"✅ step_results 포함됨: {list(session_dict['step_results'].keys())}")
+                if 'step_4_result' in session_dict['step_results']:
+                    step_4_keys = list(session_dict['step_results']['step_4_result'].keys()) if isinstance(session_dict['step_results']['step_4_result'], dict) else []
+                    logger.info(f"✅ step_4_result 키들: {step_4_keys}")
+            else:
+                logger.warning("⚠️ step_results가 session_dict에 없음")
+            
+            # 이미지 데이터 추가
+            try:
+                # 원본 이미지들
+                if session_data.metadata.person_image:
+                    def load_image_sync(path: str):
+                        from PIL import Image
+                        return Image.open(path).convert('RGB')
+                    
+                    person_image = load_image_sync(str(session_data.metadata.person_image.path))
+                    if person_image:
+                        session_dict['person_image'] = person_image
+                
+                if session_data.metadata.clothing_image:
+                    def load_image_sync(path: str):
+                        from PIL import Image
+                        return Image.open(path).convert('RGB')
+                    
+                    clothing_image = load_image_sync(str(session_data.metadata.clothing_image.path))
+                    if clothing_image:
+                        session_dict['clothing_image'] = clothing_image
+            except Exception as e:
+                logger.warning(f"⚠️ 이미지 로드 실패: {e}")
+            
+            logger.info(f"✅ GET_SESSION_DATA 완료: {session_id}")
+            return session_dict
+            
+        except Exception as e:
+            logger.error(f"❌ 세션 데이터 조회 실패: {e}")
+            logger.error(f"❌ 상세 오류: {traceback.format_exc()}")
+            return {}
     
     def _create_session_status_dict(self, session_data: SessionData) -> Dict[str, Any]:
         """세션 상태 딕셔너리 생성"""

@@ -1133,7 +1133,14 @@ class GeometricMatchingStep(BaseStepMixin):
                         
                         # 🔥 최종 검증
                         try:
-                            test_tensor = torch.zeros((1, 6, 256, 192), device=self.device)
+                            test_tensor = torch.zeros((1, 6, 256, 192), device=self.device, dtype=torch.float32)
+                            
+                            # 🔥 MPS 타입 통일
+                            if self.device == 'mps':
+                                test_tensor = test_tensor.to(dtype=torch.float32)
+                                if hasattr(model, 'to'):
+                                    model = model.to(dtype=torch.float32)
+                            
                             with torch.no_grad():
                                 _ = model(test_tensor, test_tensor)
                             logger.info(f"✅ Advanced Geometric AI 모델 검증 완료: {checkpoint_name}")
@@ -1171,6 +1178,13 @@ class GeometricMatchingStep(BaseStepMixin):
             # 🔥 생성된 모델 테스트
             try:
                 test_tensor = torch.zeros((1, 6, 256, 192), device=self.device, dtype=torch.float32)
+                
+                # 🔥 MPS 타입 통일
+                if self.device == 'mps':
+                    test_tensor = test_tensor.to(dtype=torch.float32)
+                    if hasattr(model, 'to'):
+                        model = model.to(dtype=torch.float32)
+                
                 with torch.no_grad():
                     _ = model(test_tensor, test_tensor)
                 logger.info("✅ Advanced Geometric AI 모델 생성 및 검증 완료")
@@ -1264,6 +1278,13 @@ class GeometricMatchingStep(BaseStepMixin):
             # 🔥 모델 검증
             try:
                 test_input = torch.zeros((1, 6, 256, 192), device=self.device, dtype=torch.float32)
+                
+                # 🔥 MPS 타입 통일
+                if self.device == 'mps':
+                    test_input = test_input.to(dtype=torch.float32)
+                    if hasattr(gmm_model, 'to'):
+                        gmm_model = gmm_model.to(dtype=torch.float32)
+                
                 with torch.no_grad():
                     test_output = gmm_model(test_input, test_input)
                 logger.info(f"✅ GMM 모델 추론 테스트 성공: {type(test_output)}")
@@ -2129,7 +2150,7 @@ class GeometricMatchingStep(BaseStepMixin):
             
             # 6. AI 추론 실행
             try:
-                inference_result = self._run_ai_inference_complete(processed_input)
+                inference_result = self._run_ai_inference(processed_input)
                 
                 if not inference_result.get('success', False):
                     return self._create_error_response(f"AI 추론 실패: {inference_result.get('error', 'Unknown error')}")
@@ -3265,12 +3286,59 @@ class GeometricMatchingStep(BaseStepMixin):
             logger.warning(f"⚠️ API 입력 타입 변환 실패 ({api_type}): {e}")
             return value
 
+    def _run_ai_inference(self, processed_input: Dict[str, Any]) -> Dict[str, Any]:
+        """🔥 실제 Geometric Matching AI 추론 (BaseStepMixin v20.0 호환)"""
+        try:
+            # 입력 데이터 검증
+            if not processed_input:
+                return {'success': False, 'error': '입력 데이터가 비어있습니다'}
+            
+            # 이미지 데이터 추출
+            person_image = processed_input.get('person_image')
+            clothing_image = processed_input.get('clothing_image')
+            
+            if person_image is None or clothing_image is None:
+                return {'success': False, 'error': '이미지 데이터가 없습니다'}
+            
+            # 텐서 변환
+            try:
+                person_tensor = self._prepare_image_tensor_complete(person_image)
+                clothing_tensor = self._prepare_image_tensor_complete(clothing_image)
+            except Exception as e:
+                return {'success': False, 'error': f'이미지 텐서 변환 실패: {e}'}
+            
+            # AI 모델 실행
+            try:
+                results = self._execute_all_ai_models(person_tensor, clothing_tensor, force_ai_processing=True)
+                
+                if not results.get('success', False):
+                    return {'success': False, 'error': results.get('error', 'AI 모델 실행 실패')}
+                
+                # 결과 융합 및 후처리
+                final_result = self._fuse_and_postprocess_results(results, person_tensor, clothing_tensor)
+                
+                return {
+                    'success': True,
+                    'result': final_result,
+                    'processing_time': results.get('processing_time', 0.0),
+                    'models_used': results.get('models_used', []),
+                    'confidence': final_result.get('confidence', 0.0)
+                }
+                
+            except Exception as e:
+                return {'success': False, 'error': f'AI 모델 실행 실패: {e}'}
+                
+        except Exception as e:
+            return {'success': False, 'error': f'AI 추론 실패: {e}'}
+
     def _run_ai_inference_complete(self, kwargs: Dict[str, Any]) -> Dict[str, Any]:
         """🔥 완전한 Geometric Matching AI 추론 로직 (기본 버전 기능 통합)"""
         import time
         
         logger.info("🚀 완전한 Geometric Matching AI 추론 시작")
-        
+        logger.info(f"🔥 [Step 4] 입력 데이터 키들: {list(kwargs.keys())}")
+        logger.info(f"🔥 [Step 4] 입력 데이터 타입들: {[(k, type(v).__name__) for k, v in kwargs.items()]}")
+
         try:
             start_time = time.time()
             

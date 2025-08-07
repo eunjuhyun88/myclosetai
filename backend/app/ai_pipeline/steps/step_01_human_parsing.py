@@ -2979,6 +2979,10 @@ class AdvancedPostProcessor:
             if not CV2_AVAILABLE:
                 return parsing_map
             
+            # 🔥 텐서인 경우 detach() 후 numpy로 변환
+            if hasattr(parsing_map, 'detach'):
+                parsing_map = parsing_map.detach().cpu().numpy()
+            
             # 엣지 감지
             gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
             edges = cv2.Canny(gray, 50, 150)
@@ -3024,11 +3028,11 @@ class AdvancedPostProcessor:
             if len(parsing_map.shape) != 2:
                 logging.getLogger(__name__).warning(f"⚠️ 파싱 맵 차원이 2가 아님: {parsing_map.shape}")
                 if len(parsing_map.shape) == 3:
-                    # 첫 번째 채널 사용
-                    parsing_map = parsing_map[0] if parsing_map.shape[0] == 1 else parsing_map[:, :, 0]
+                    # 첫 번째 배치 사용 (이미 argmax로 변환됨)
+                    parsing_map = parsing_map[0]
                 elif len(parsing_map.shape) == 4:
-                    # 첫 번째 배치, 첫 번째 채널 사용
-                    parsing_map = parsing_map[0, 0] if parsing_map.shape[0] == 1 and parsing_map.shape[1] == 1 else parsing_map[0, :, :, 0]
+                    # 4차원 텐서인 경우 argmax로 클래스 선택
+                    parsing_map = np.argmax(parsing_map[0], axis=0).astype(np.uint8)
                 else:
                     return np.zeros((512, 512), dtype=np.uint8)
             
@@ -5002,22 +5006,35 @@ class HumanParsingStep(BaseStepMixin):
 
         def _extract_input_image(self, input_data: Dict[str, Any]) -> Optional[np.ndarray]:
             """입력 데이터에서 이미지 추출 (다양한 키 이름 지원)"""
+            self.logger.info(f"🔥 [Step 1] 입력 데이터 키들: {list(input_data.keys())}")
+            
             image = input_data.get('image')
+            if image is not None:
+                self.logger.info(f"✅ [Step 1] 'image' 키에서 이미지 발견: {type(image)}")
             
             if image is None:
                 image = input_data.get('person_image')
+                if image is not None:
+                    self.logger.info(f"✅ [Step 1] 'person_image' 키에서 이미지 발견: {type(image)}")
+            
             if image is None:
                 image = input_data.get('input_image')
+                if image is not None:
+                    self.logger.info(f"✅ [Step 1] 'input_image' 키에서 이미지 발견: {type(image)}")
             
             # 세션에서 이미지 로드 (이미지가 없는 경우)
             if image is None and 'session_id' in input_data:
+                self.logger.info(f"🔥 [Step 1] 세션에서 이미지 로드 시도: {input_data['session_id']}")
                 try:
                     session_manager = self._get_service_from_central_hub('session_manager')
                     if session_manager:
                         if hasattr(session_manager, 'get_session_images_sync'):
+                            self.logger.info(f"✅ [Step 1] get_session_images_sync 사용")
                             person_image, _ = session_manager.get_session_images_sync(input_data['session_id'])
                             image = person_image
+                            self.logger.info(f"✅ [Step 1] 세션에서 이미지 로드 성공: {type(image)}")
                         elif hasattr(session_manager, 'get_session_images'):
+                            self.logger.info(f"✅ [Step 1] get_session_images 사용")
                             import asyncio
                             import concurrent.futures
                             
@@ -5031,8 +5048,14 @@ class HumanParsingStep(BaseStepMixin):
                                 future = executor.submit(run_async_session_load)
                                 person_image, _ = future.result(timeout=10)
                                 image = person_image
+                            self.logger.info(f"✅ [Step 1] 세션에서 이미지 로드 성공: {type(image)}")
                 except Exception as e:
-                    self.logger.warning(f"⚠️ 세션에서 이미지 로드 실패: {e}")
+                    self.logger.warning(f"⚠️ [Step 1] 세션에서 이미지 로드 실패: {e}")
+            
+            if image is None:
+                self.logger.warning(f"⚠️ [Step 1] 이미지를 찾을 수 없음")
+            else:
+                self.logger.info(f"✅ [Step 1] 최종 이미지 타입: {type(image)}")
             
             return image
 
@@ -5107,10 +5130,16 @@ class HumanParsingStep(BaseStepMixin):
                 # 🔥 5. 출력에서 파싱 추출 (표준화 없이)
                 parsing_output, edge_output = self._extract_parsing_from_output(output, device)
                 
-                # 🔥 6. 채널 수는 그대로 유지 (각 모델의 고유한 출력)
-                print(f"🔧 Graphonomy 출력 채널 수: {parsing_output.shape[1]}")
+                # 🔥 6. 4차원 텐서를 2차원으로 변환 (근본적 해결)
+                if len(parsing_output.shape) == 4:
+                    # (batch, channels, height, width) -> (batch, height, width)
+                    parsing_output = torch.argmax(parsing_output, dim=1)
+                    self.logger.info(f"✅ 4차원 텐서를 2차원으로 변환: {parsing_output.shape}")
                 
-                # 🔥 7. 신뢰도 계산
+                # 🔥 7. 채널 수는 그대로 유지 (각 모델의 고유한 출력)
+                print(f"🔧 Graphonomy 출력 채널 수: {parsing_output.shape[1] if len(parsing_output.shape) > 2 else '2D'}")
+                
+                # 🔥 8. 신뢰도 계산
                 confidence = self._calculate_confidence(parsing_output, edge_output=edge_output)
                 
                 return {
@@ -5233,6 +5262,7 @@ class HumanParsingStep(BaseStepMixin):
                 # 🔥 5단계: 직접 텐서 출력 처리
                 elif isinstance(output, torch.Tensor):
                     self.logger.debug(f"✅ 직접 텐서 출력: {output.shape}")
+                    # 원본 텐서 그대로 반환 (차원 변환은 호출하는 곳에서 처리)
                     return output, None
                 
                 # 🔥 6단계: 기타 타입 처리
@@ -7038,19 +7068,40 @@ class HumanParsingStep(BaseStepMixin):
                 
                 # 🔥 parsing_map이 2D 배열인지 확인하고 조정
                 if len(parsing_map.shape) == 3:
-                    # 3D 배열인 경우 첫 번째 채널 사용
+                    # 3D 배열인 경우 첫 번째 배치 사용 (이미 argmax로 변환됨)
                     parsing_map = parsing_map[0]
                 elif len(parsing_map.shape) > 3:
-                    # 4D 이상인 경우 첫 번째 배치, 첫 번째 채널 사용
-                    parsing_map = parsing_map[0, 0]
+                    # 4D 이상인 경우 첫 번째 배치 사용
+                    parsing_map = parsing_map[0]
                 
-                # 원본 크기 결정
-                if hasattr(original_image, 'size') and not isinstance(original_image, np.ndarray):
-                    original_size = original_image.size[::-1]  # (width, height) -> (height, width)
-                elif isinstance(original_image, np.ndarray):
-                    original_size = original_image.shape[:2]
-                else:
-                    original_size = (512, 512)
+                # 🔥 파싱 맵 검증 로깅
+                self.logger.info(f"🔍 파싱 맵 최종 형태: {parsing_map.shape}")
+                self.logger.info(f"🔍 파싱 맵 데이터 타입: {parsing_map.dtype}")
+                self.logger.info(f"🔍 파싱 맵 값 범위: {parsing_map.min()} ~ {parsing_map.max()}")
+                self.logger.info(f"🔍 파싱 맵 고유 값들: {np.unique(parsing_map)}")
+                
+                # 🔥 원본 크기 결정 (안전한 처리)
+                original_size = (512, 512)  # 기본값 설정
+                try:
+                    if hasattr(original_image, 'size') and not isinstance(original_image, np.ndarray):
+                        # PIL Image인 경우
+                        original_size = original_image.size[::-1]  # (width, height) -> (height, width)
+                        self.logger.debug(f"🔍 PIL Image 크기: {original_size}")
+                    elif isinstance(original_image, np.ndarray):
+                        # NumPy 배열인 경우
+                        if len(original_image.shape) >= 2:
+                            original_size = original_image.shape[:2]
+                            self.logger.debug(f"🔍 NumPy 배열 크기: {original_size}")
+                        else:
+                            self.logger.warning(f"⚠️ NumPy 배열 형태가 잘못됨: {original_image.shape}")
+                    elif original_image is None:
+                        self.logger.warning("⚠️ original_image가 None입니다. 기본 크기 사용")
+                    else:
+                        self.logger.warning(f"⚠️ 알 수 없는 이미지 타입: {type(original_image)}")
+                except Exception as e:
+                    self.logger.warning(f"⚠️ 원본 크기 결정 실패: {e}. 기본 크기 사용")
+                
+                self.logger.debug(f"🔍 최종 원본 크기: {original_size}")
                 
                 # 원본 크기로 리사이즈
                 if parsing_map.shape[:2] != original_size:
@@ -7109,7 +7160,8 @@ class HumanParsingStep(BaseStepMixin):
                                 if len(confidence_array.shape) == 3:
                                     confidence_array = confidence_array[0] if confidence_array.shape[0] == 1 else confidence_array[:, :, 0]
                                 elif len(confidence_array.shape) == 4:
-                                    confidence_array = confidence_array[0, 0] if confidence_array.shape[0] == 1 and confidence_array.shape[1] == 1 else confidence_array[0, :, :, 0]
+                                    # 4차원 텐서인 경우 첫 번째 배치 사용
+                                    confidence_array = confidence_array[0]
                                 else:
                                     confidence_array = np.ones(original_size, dtype=np.float32) * 0.8
                             
@@ -7559,6 +7611,8 @@ class HumanParsingStep(BaseStepMixin):
                 detected_parts = {}
                 unique_labels = np.unique(parsing_map)
                 
+                self.logger.info(f"🔍 파싱 맵에서 발견된 라벨들: {unique_labels}")
+                
                 for label in unique_labels:
                     if label in BODY_PARTS:
                         part_name = BODY_PARTS[label]
@@ -7574,6 +7628,10 @@ class HumanParsingStep(BaseStepMixin):
                                 'is_clothing': label in [5, 6, 7, 9, 11, 12],
                                 'is_skin': label in [10, 13, 14, 15, 16, 17]
                             }
+                            self.logger.info(f"✅ {part_name} 감지됨: {pixel_count} 픽셀 ({percentage:.2f}%)")
+                
+                if not detected_parts:
+                    self.logger.warning(f"⚠️ 감지된 부위가 없음. 파싱 맵 값 범위: {parsing_map.min()} ~ {parsing_map.max()}")
                 
                 return detected_parts
                 

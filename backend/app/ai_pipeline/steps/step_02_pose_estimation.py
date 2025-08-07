@@ -4028,6 +4028,7 @@ class PoseEstimationStep(BaseStepMixin):
             
             # 🔥 이미지 데이터 추출 (단순화)
             print(f"🔥 [디버깅] 이미지 데이터 추출 시작")
+            self.logger.info(f"🔥 [Step 2] 입력 데이터 키들: {list(processed_input.keys())}")
             image = None
             
             # 직접 입력에서 이미지 추출
@@ -4035,22 +4036,35 @@ class PoseEstimationStep(BaseStepMixin):
                 if key in processed_input:
                     image = processed_input[key]
                     print(f"🔥 [디버깅] 이미지 데이터 발견: {key} - 타입: {type(image)}")
+                    self.logger.info(f"✅ [Step 2] '{key}' 키에서 이미지 발견: {type(image)}")
                     break
             
             if image is None:
                 print(f"🔥 [디버깅] 입력에서 이미지를 찾을 수 없음 - Session에서 시도")
+                self.logger.info(f"🔥 [Step 2] 세션에서 이미지 로드 시도")
                 # Session에서 이미지 가져오기 (단순화)
                 if 'session_id' in processed_input:
                     try:
                         session_manager = self._get_service_from_central_hub('session_manager')
                         if session_manager and hasattr(session_manager, 'get_session_images_sync'):
+                            self.logger.info(f"✅ [Step 2] get_session_images_sync 사용")
                             person_image, clothing_image = session_manager.get_session_images_sync(processed_input['session_id'])
                             image = person_image
                             print(f"🔥 [디버깅] Session에서 이미지 로드 완료: {type(image)}")
+                            self.logger.info(f"✅ [Step 2] 세션에서 이미지 로드 성공: {type(image)}")
+                        else:
+                            self.logger.warning(f"⚠️ [Step 2] get_session_images_sync 메서드 없음")
                     except Exception as e:
                         print(f"🔥 [디버깅] Session 이미지 로드 실패: {e}")
+                        self.logger.warning(f"⚠️ [Step 2] 세션에서 이미지 로드 실패: {e}")
+                else:
+                    self.logger.warning(f"⚠️ [Step 2] session_id가 입력에 없음")
             
             print(f"🔥 [디버깅] 최종 이미지: {type(image) if image else 'None'}")
+            if image is None:
+                self.logger.warning(f"⚠️ [Step 2] 이미지를 찾을 수 없음")
+            else:
+                self.logger.info(f"✅ [Step 2] 최종 이미지 타입: {type(image)}")
             
             if image is None:
                 print(f"🔥 [디버깅] 입력 이미지 없음 - Mock 모드로 폴백")
@@ -4220,8 +4234,8 @@ class PoseEstimationStep(BaseStepMixin):
                         'pose_recommendations': [f'{model_name} 모델로 실제 포즈 추정 완료'],
                         'skeleton_structure': {'connections': [], 'bone_lengths': {}, 'valid_connections': 0},
                         'landmarks': {},
-                        'keypoints_count': len(keypoints),
-                        'detected_pose_confidence': confidence,
+                        'keypoints_count': len(keypoints),  # 🔥 키포인트 개수 명시적 추가
+                        'detected_pose_confidence': confidence,  # 🔥 포즈 신뢰도 명시적 추가
                         'ensemble_info': {
                             'models_used': [model_name],
                             'ensemble_method': 'single_model',
@@ -4281,8 +4295,8 @@ class PoseEstimationStep(BaseStepMixin):
                         'pose_recommendations': [f'{len(successful_models)}개 모델 앙상블로 포즈 추정 완료'],
                         'skeleton_structure': {'connections': [], 'bone_lengths': {}, 'valid_connections': 0},
                         'landmarks': {},
-                        'keypoints_count': len(weighted_keypoints),
-                        'detected_pose_confidence': avg_confidence,
+                        'keypoints_count': len(weighted_keypoints),  # 🔥 키포인트 개수 명시적 추가
+                        'detected_pose_confidence': avg_confidence,  # 🔥 포즈 신뢰도 명시적 추가
                         'ensemble_info': {
                             'models_used': successful_models,
                             'ensemble_method': 'weighted_average',
@@ -4560,8 +4574,8 @@ class PoseEstimationStep(BaseStepMixin):
                             'pose_recommendations': [f'최고 성능 {best_model_name.upper()} 모델로 포즈 추정 완료'],
                             'skeleton_structure': {'connections': [], 'bone_lengths': {}, 'valid_connections': 0},
                             'landmarks': {},
-                            'keypoints_count': len(keypoints),
-                            'detected_pose_confidence': 0.9
+                            'keypoints_count': len(keypoints),  # 🔥 키포인트 개수 명시적 추가
+                            'detected_pose_confidence': 0.9  # 🔥 포즈 신뢰도 명시적 추가
                         }
                         
                         print(f"🔥 [디버깅] 최종 반환 결과 키: {list(result.keys())}")
@@ -4614,8 +4628,8 @@ class PoseEstimationStep(BaseStepMixin):
                             'pose_recommendations': ['MediaPipe 모델로 실제 포즈 추정 완료'],
                             'skeleton_structure': {'connections': [], 'bone_lengths': {}, 'valid_connections': 0},
                             'landmarks': {},
-                            'keypoints_count': len(keypoints),
-                            'detected_pose_confidence': 0.9
+                            'keypoints_count': len(keypoints),  # 🔥 키포인트 개수 명시적 추가
+                            'detected_pose_confidence': 0.9  # 🔥 포즈 신뢰도 명시적 추가
                         }
                         
                         print(f"🔥 [디버깅] MediaPipe 강제 추론 최종 결과 keypoints_count: {result.get('keypoints_count')}")
@@ -5424,7 +5438,9 @@ class PoseEstimationStep(BaseStepMixin):
                 'step_name': self.step_name,
                 'step_id': self.step_id,
                 'processing_time': step_output.get('processing_time', 0.0),
-                'timestamp': time.time()
+                'timestamp': time.time(),
+                'keypoints_count': step_output.get('keypoints_count', 0),  # 🔥 키포인트 개수 추가
+                'detected_pose_confidence': step_output.get('detected_pose_confidence', 0.0)  # 🔥 포즈 신뢰도 추가
             }
             
             # 오류가 있는 경우
@@ -5444,6 +5460,8 @@ class PoseEstimationStep(BaseStepMixin):
                 'skeleton_structure': step_output.get('skeleton_structure', {}),
                 'landmarks': step_output.get('landmarks', {}),
                 'num_keypoints_detected': step_output.get('num_keypoints_detected', 0),
+                'keypoints_count': step_output.get('keypoints_count', 0),  # 🔥 키포인트 개수 추가
+                'detected_pose_confidence': step_output.get('detected_pose_confidence', 0.0),  # 🔥 포즈 신뢰도 추가
                 'detailed_scores': step_output.get('detailed_scores', {}),
                 'pose_recommendations': step_output.get('pose_recommendations', [])
             }

@@ -1673,6 +1673,9 @@ class ClothSegmentationStep(BaseStepMixin):
             print(f"🔥 [디버깅] processed_input 키들: {list(processed_input.keys())}")
             print(f"🔥 [디버깅] processed_input 값들: {[(k, type(v).__name__) for k, v in processed_input.items()]}")
             
+            self.logger.info(f"🔥 [Step 3] 입력 데이터 키들: {list(processed_input.keys())}")
+            self.logger.info(f"🔥 [Step 3] 입력 데이터 타입들: {[(k, type(v).__name__) for k, v in processed_input.items()]}")
+            
             start_time = time.time()
             
             # 🔥 메모리 안전성을 위한 가비지 컬렉션
