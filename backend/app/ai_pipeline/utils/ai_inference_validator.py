@@ -935,25 +935,69 @@ class AIInferenceValidator:
         }
         
         try:
-            checkpoint = torch.load(checkpoint_path, map_location='cpu', weights_only=True)
+            # 🔥 다양한 로딩 방법 시도
+            checkpoint = None
+            state_dict = None
             
-            if isinstance(checkpoint, dict) and 'state_dict' in checkpoint:
-                state_dict = checkpoint['state_dict']
+            # 방법 1: weights_only=True (안전한 방법)
+            try:
+                checkpoint = torch.load(checkpoint_path, map_location='cpu', weights_only=True)
+                if isinstance(checkpoint, dict):
+                    if 'state_dict' in checkpoint:
+                        state_dict = checkpoint['state_dict']
+                    else:
+                        state_dict = checkpoint
+            except Exception as e1:
+                # 방법 2: weights_only=False (전통적인 방법)
+                try:
+                    checkpoint = torch.load(checkpoint_path, map_location='cpu', weights_only=False)
+                    if isinstance(checkpoint, dict):
+                        if 'state_dict' in checkpoint:
+                            state_dict = checkpoint['state_dict']
+                        else:
+                            state_dict = checkpoint
+                except Exception as e2:
+                    # 방법 3: TorchScript 모델
+                    try:
+                        checkpoint = torch.jit.load(checkpoint_path, map_location='cpu')
+                        state_dict = checkpoint.state_dict()
+                    except Exception as e3:
+                        # 방법 4: SafeTensors (별도 라이브러리 필요)
+                        try:
+                            from safetensors import safe_open
+                            with safe_open(checkpoint_path, framework="pt", device="cpu") as f:
+                                state_dict = {key: f.get_tensor(key) for key in f.keys()}
+                        except Exception as e4:
+                            result['issues'].append(f"모든 로딩 방법 실패: {e4}")
+                            return result
                 
-                # 아키텍처 감지
+                # 아키텍처 감지 (개선된 버전)
                 architecture_indicators = {
-                    'graphonomy': ['backbone', 'decoder', 'classifier'],
-                    'u2net': ['stage1', 'stage2', 'stage3', 'stage4'],
-                    'deeplabv3plus': ['backbone', 'decoder', 'classifier'],
-                    'gmm': ['feature_extraction', 'regression'],
-                    'tps': ['localization_net', 'grid_generator'],
-                    'raft': ['feature_encoder', 'context_encoder', 'flow_head'],
-                    'sam': ['image_encoder', 'prompt_encoder', 'mask_decoder'],
-                    'stable_diffusion': ['unet', 'vae', 'text_encoder'],
-                    'ootd': ['unet_vton', 'unet_garm', 'vae'],
-                    'real_esrgan': ['body', 'upsampling'],
-                    'swinir': ['layers', 'patch_embed', 'norm'],
-                    'clip': ['visual', 'transformer', 'text_projection']
+                    'graphonomy': ['backbone', 'decoder', 'classifier', 'schp', 'hrnet'],
+                    'u2net': ['stage1', 'stage2', 'stage3', 'stage4', 'side', 'u2net'],
+                    'deeplabv3plus': ['backbone', 'decoder', 'classifier', 'aspp', 'deeplab'],
+                    'gmm': ['feature_extraction', 'regression', 'gmm', 'geometric', 'pretrained.model'],
+                    'tps': ['localization_net', 'grid_generator', 'tps', 'transformation'],
+                    'raft': ['feature_encoder', 'context_encoder', 'flow_head', 'raft'],
+                    'sam': ['image_encoder', 'prompt_encoder', 'mask_decoder', 'sam'],
+                    'stable_diffusion': ['unet', 'vae', 'text_encoder', 'diffusion', 'model'],
+                    'ootd': ['unet_vton', 'unet_garm', 'vae', 'ootd'],
+                    'real_esrgan': ['body', 'upsampling', 'esrgan', 'real_esrgan'],
+                    'swinir': ['layers', 'patch_embed', 'norm', 'swin', 'swinir'],
+                    'clip': ['visual', 'transformer', 'text_projection', 'clip'],
+                    'vit': ['cls_token', 'pos_embed', 'patch_embed', 'blocks', 'attn', 'mlp'],
+                    'hrnet': ['hrnet', 'stage', 'transition', 'hrnet_w'],
+                    'openpose': ['pose', 'body', 'hand', 'face', 'openpose'],
+                    'yolo': ['yolo', 'detect', 'anchor', 'yolov'],
+                    'mediapipe': ['mediapipe', 'landmark', 'pose'],
+                    'viton': ['viton', 'vton', 'warping', 'tom'],
+                    'dpt': ['dpt', 'depth', 'midas'],
+                    'efficientnet': ['efficientnet', 'efficient'],
+                    'resnet': ['resnet', 'residual'],
+                    'mobilenet': ['mobilenet', 'mobile'],
+                    'densenet': ['densenet', 'dense'],
+                    'unet': ['down_blocks', 'up_blocks', 'conv_in', 'conv_out', 'time_embedding'],
+                    'diffusion': ['down_blocks', 'up_blocks', 'time_embedding', 'conv_in', 'conv_out']
                 }
                 
                 detected_arch = None

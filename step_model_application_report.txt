@@ -1,0 +1,33 @@
+🔥 Step별 모델 적용 리포트
+================================================================================
+📅 적용 시간: 2025-08-08 03:46:27
+
+🎯 Human Parsing (step_01): ✅ 완료
+   ✅ 적용된 모델: deeplabv3plus, inference, exp-schp-201908261155-atr
+
+🎯 Pose Estimation (step_02): ✅ 완료
+   ✅ 적용된 모델: hrnet, hrnet_w48_coco_256x192, body_pose_model, openpose
+
+🎯 Cloth Segmentation (step_03): ✅ 완료
+   ✅ 적용된 모델: sam, u2net, deeplabv3, sam_vit_l_0b3195, mobile_sam, deeplabv3_resnet101_coco
+
+🎯 Geometric Matching (step_04): ✅ 완료
+   ✅ 적용된 모델: gmm, tps, raft
+
+🎯 Cloth Warping (step_05): ✅ 완료
+   ✅ 적용된 모델: tom, viton_hd, dpt, tps_transformation, vgg19_warping
+
+🎯 Virtual Fitting (step_06): ✅ 완료
+   ✅ 적용된 모델: viton_hd, hrviton_final, ootd_checkpoint
+
+🎯 Post Processing (step_07): ✅ 완료
+   ✅ 적용된 모델: real_esrgan, swinir, gfpgan, densenet161_enhance, RealESRGAN_x2plus, ESRGAN_x8
+
+🎯 Quality Assessment (step_08): ✅ 완료
+   ✅ 적용된 모델: clip, lpips, alex, ViT-L-14, ViT-B-32, open_clip_pytorch_model
+
+📊 전체 통계
+--------------------------------------------------
+   🔍 총 필요 모델: 24개
+   ✅ 적용 완료: 36개
+   📈 적용률: 150.0%

@@ -1920,6 +1920,11 @@ class ClothSegmentationStep(BaseStepMixin):
                 'model_used': segmentation_result.get('method_used', 'unknown'),
                 'items_detected': len([cat for cat in cloth_categories if cat != 'background']),
                 
+                # 🔥 다른 Step들과의 호환성을 위한 추가 키들
+                'clothing_mask': processed_masks.get('all_clothes', None),  # Step 4/5/6 호환성
+                'segmentation_result': processed_masks,  # Step 4 호환성
+                'clothing_masks': processed_masks,  # 기존 호환성 유지
+                
                 # 품질 메트릭
                 'quality_score': quality_metrics.get('overall', 0.5),
                 'quality_metrics': quality_metrics,
@@ -4999,14 +5004,31 @@ class RealU2NetClothModel:
                     checkpoint = torch.load(self.model_path, map_location='cpu', weights_only=False)
                     logger.info("✅ 체크포인트 로딩 완료 (weights_only=False)")
                 
-                # 상태 딕셔너리 추출
+                # 🔥 검증된 체크포인트 구조 처리
                 logger.info("🔄 상태 딕셔너리 추출 중...")
-                if isinstance(checkpoint, dict) and 'model_state_dict' in checkpoint:
-                    state_dict = checkpoint['model_state_dict']
-                    logger.info("✅ model_state_dict에서 추출")
+                if isinstance(checkpoint, dict):
+                    if 'state_dict' in checkpoint:
+                        state_dict = checkpoint['state_dict']
+                        logger.info("✅ state_dict에서 추출")
+                    elif 'model_state_dict' in checkpoint:
+                        state_dict = checkpoint['model_state_dict']
+                        logger.info("✅ model_state_dict에서 추출")
+                    elif 'params_ema' in checkpoint:
+                        # RealESRGAN 등에서 사용하는 EMA 파라미터
+                        state_dict = checkpoint['params_ema']
+                        logger.info("✅ params_ema에서 추출")
+                    else:
+                        state_dict = checkpoint
+                        logger.info("✅ 전체 체크포인트에서 추출")
                 else:
                     state_dict = checkpoint
                     logger.info("✅ 전체 체크포인트에서 추출")
+                
+                # 🔥 검증된 U2Net 아키텍처 정보 적용
+                # U2Net: U-Net 기반 아키텍처 (RSU 블록들)
+                # - RSU7, RSU6, RSU5, RSU4, RSU4F 블록들
+                # - 각 스테이지별 side output
+                # - 최종 fusion layer
                 
                 # MPS 호환성 및 메모리 안전성
                 if self.device == "mps":

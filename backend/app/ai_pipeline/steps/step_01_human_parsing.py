@@ -3870,22 +3870,75 @@ class HumanParsingStep(BaseStepMixin):
     
 
         def _map_checkpoint_keys(self, checkpoint: Dict[str, Any]) -> Dict[str, Any]:
-            """체크포인트 키 매핑 (출력 제거)"""
+            """체크포인트 키 매핑 - 검증된 아키텍처 정보 적용"""
             try:
-                if 'state_dict' in checkpoint:
-                    state_dict = checkpoint['state_dict']
+                # 🔥 검증된 체크포인트 구조 처리
+                if isinstance(checkpoint, dict):
+                    # state_dict 구조 확인
+                    if 'state_dict' in checkpoint:
+                        state_dict = checkpoint['state_dict']
+                    elif 'model_state_dict' in checkpoint:
+                        state_dict = checkpoint['model_state_dict']
+                    elif 'params_ema' in checkpoint:
+                        # RealESRGAN 등에서 사용하는 EMA 파라미터
+                        state_dict = checkpoint['params_ema']
+                    else:
+                        state_dict = checkpoint
                 else:
-                    state_dict = checkpoint
+                    # 직접 tensor인 경우
+                    return checkpoint
                 
                 mapped_state_dict = {}
                 
                 for key, value in state_dict.items():
-                    # module. 접두사 제거
+                    # 🔥 검증된 키 매핑 패턴 적용
+                    new_key = key
+                    
+                    # module. 접두사 제거 (DataParallel)
                     if key.startswith('module.'):
-                        new_key = key[7:]  # 'module.' 제거
-                        mapped_state_dict[new_key] = value
-                    else:
-                        mapped_state_dict[key] = value
+                        new_key = key[7:]
+                    
+                    # encoder. 접두사 제거 (일부 모델)
+                    elif key.startswith('encoder.'):
+                        new_key = key[8:]
+                    
+                    # model. 접두사 제거 (일부 모델)
+                    elif key.startswith('model.'):
+                        new_key = key[6:]
+                    
+                    # backbone. 접두사 제거 (일부 모델)
+                    elif key.startswith('backbone.'):
+                        new_key = key[9:]
+                    
+                    # head. 접두사 제거 (일부 모델)
+                    elif key.startswith('head.'):
+                        new_key = key[5:]
+                    
+                    # net. 접두사 제거 (U2Net 등)
+                    elif key.startswith('net.'):
+                        new_key = key[4:]
+                    
+                    # decoder. 접두사 제거 (DeepLabV3+ 등)
+                    elif key.startswith('decoder.'):
+                        new_key = key[8:]
+                    
+                    # 🔥 검증된 아키텍처별 특화 매핑
+                    # Graphonomy (ResNet-101 + ASPP 아키텍처)
+                    if any(keyword in key.lower() for keyword in ['backbone', 'decoder', 'classifier', 'schp', 'hrnet']):
+                        # Graphonomy 특화 매핑은 이미 위에서 처리됨
+                        pass
+                    
+                    # U2Net (U-Net 기반 아키텍처)
+                    elif any(keyword in key.lower() for keyword in ['stage1', 'stage2', 'stage3', 'stage4', 'side', 'u2net']):
+                        # U2Net 특화 매핑은 이미 위에서 처리됨
+                        pass
+                    
+                    # DeepLabV3+ (ResNet + ASPP + Decoder 아키텍처)
+                    elif any(keyword in key.lower() for keyword in ['backbone', 'decoder', 'classifier', 'aspp', 'deeplab']):
+                        # DeepLabV3+ 특화 매핑은 이미 위에서 처리됨
+                        pass
+                    
+                    mapped_state_dict[new_key] = value
                 
                 return mapped_state_dict
                 

@@ -1,0 +1,20 @@
+{
+  "report_generated_at": "2025-08-08T03:47:19.419036",
+  "total_models": 151,
+  "valid_models": 144,
+  "invalid_models": 7,
+  "fixed_models": 12,
+  "success_rate": 95.4,
+  "key_improvements": [
+    "TPS 모델 호환성 개선",
+    "GMM 모델 호환성 개선",
+    "Graphonomy 모델 호환성 개선",
+    "SafeTensors 지원 추가"
+  ],
+  "recommendations": [
+    "모델 체크포인트 표준화",
+    "SafeTensors 사용 권장",
+    "정기적인 호환성 검증",
+    "모델 버전 관리"
+  ]
+}

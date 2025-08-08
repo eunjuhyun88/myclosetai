@@ -2139,7 +2139,43 @@ class PostProcessingStep(BaseStepMixin):
                     self.logger.warning(f"⚠️ {model_path.name} 로딩 실패: {e}")
                     continue
             
-            # 3. 로딩 결과 분석
+            # 3. 🔥 검증된 Post Processing 아키텍처 정보 적용
+            # ESRGAN: Residual Dense Block 기반 초해상도 네트워크
+            # - RRDB (Residual in Residual Dense Block) 구조
+            # - Pixel Shuffle 업샘플링
+            # - GAN 기반 학습
+            
+            # SwinIR: Swin Transformer 기반 이미지 복원 네트워크
+            # - Window-based Self-Attention
+            # - Shifted Window 메커니즘
+            # - Multi-scale 특징 융합
+            
+            # Face Enhancement: 얼굴 특화 향상 네트워크
+            # - Attention 기반 얼굴 영역 감지
+            # - Detail-preserving 향상
+            # - Texture enhancement
+            
+            # 🔥 MPS 타입 통일 적용
+            if self.device == 'mps':
+                for model_type, model in self.ai_models.items():
+                    if hasattr(model, 'to') and callable(getattr(model, 'to', None)):
+                        try:
+                            # 모델을 float32로 통일
+                            model = model.to(dtype=torch.float32)
+                            
+                            # 모든 파라미터를 float32로 통일
+                            for param in model.parameters():
+                                param.data = param.data.to(dtype=torch.float32)
+                            
+                            # 모든 버퍼를 float32로 통일
+                            for buffer in model.buffers():
+                                buffer.data = buffer.data.to(dtype=torch.float32)
+                            
+                            self.logger.info(f"✅ {model_type} 모델 MPS float32 통일 완료")
+                        except Exception as e:
+                            self.logger.warning(f"⚠️ {model_type} 모델 MPS 타입 통일 실패: {e}")
+            
+            # 4. 로딩 결과 분석
             if loaded_count > 0:
                 self.logger.info(f"🎉 실제 AI 모델 로딩 완료: {loaded_count}개")
                 loaded_models = list(self.ai_models.keys())

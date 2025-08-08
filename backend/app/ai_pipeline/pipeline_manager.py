@@ -1009,61 +1009,92 @@ class DIContainerDataFlowEngine:
                 })
             
             elif step_id == 4:  # GeometricMatching
-                step01_data = current_result.get_data_for_step(4)
-                step02_data = current_result.get_data_for_step(4)
-                step03_data = current_result.get_data_for_step(4)
+                # 🔥 올바른 방식: 각 Step의 결과를 개별적으로 가져오기
+                step01_data = current_result.get_data_for_step(1)  # Step 1 결과
+                step02_data = current_result.get_data_for_step(2)  # Step 2 결과  
+                step03_data = current_result.get_data_for_step(3)  # Step 3 결과
                 
                 input_data.update({
                     'person_image': original_inputs.get('person_image'),
                     'clothing_image': original_inputs.get('clothing_image'),
-                    'person_parsing': {'result': step01_data.get('parsed_image')},
+                    # 🔥 Step 1 결과: 인체 파싱
+                    'person_parsing': {
+                        'result': step01_data.get('parsed_image'),
+                        'body_masks': step01_data.get('body_masks'),
+                        'parsing_mask': step01_data.get('parsing_mask'),
+                        'segments': step01_data.get('segments', {})
+                    },
+                    # 🔥 Step 2 결과: 포즈 추정
                     'pose_keypoints': step02_data.get('keypoints_18', []),
-                    'clothing_segmentation': {'mask': step03_data.get('clothing_masks')},
+                    'pose_data': step02_data.get('pose_data', {}),
+                    'pose_confidence': step02_data.get('pose_confidence', 0.0),
+                    # 🔥 Step 3 결과: 의류 분할
+                    'clothing_segmentation': {
+                        'mask': step03_data.get('segmentation_masks', {}),
+                        'segmentation_result': step03_data.get('segmentation_masks', {}),
+                        'clothing_mask': step03_data.get('segmentation_masks', {}).get('all_clothes', None)
+                    },
                     'clothing_type': original_inputs.get('clothing_type', 'shirt')
                 })
             
             elif step_id == 5:  # ClothWarping
-                step03_data = current_result.get_data_for_step(5)
-                step04_data = current_result.get_data_for_step(5)
+                # 🔥 올바른 방식: 각 Step의 결과를 개별적으로 가져오기
+                step03_data = current_result.get_data_for_step(3)  # Step 3 결과
+                step04_data = current_result.get_data_for_step(4)  # Step 4 결과
                 
                 input_data.update({
                     'cloth_image': original_inputs.get('clothing_image'),
                     'person_image': original_inputs.get('person_image'),
-                    'cloth_mask': step03_data.get('clothing_masks'),
+                    'cloth_mask': step03_data.get('segmentation_masks', {}).get('all_clothes', None),  # Step 3: 의류 분할 마스크
                     'body_measurements': original_inputs.get('body_measurements', {}),
                     'fabric_type': original_inputs.get('fabric_type', 'cotton'),
-                    'geometric_matching': step04_data.get('matching_matrix')
+                    'geometric_matching': step04_data.get('matching_matrix'),  # Step 4: 기하학적 매칭 결과
+                    'matching_precision': step04_data.get('matching_precision', 'high'),
+                    'transformation_matrix': step04_data.get('transformation_matrix')
                 })
             
             elif step_id == 6:  # VirtualFitting
-                step05_data = current_result.get_data_for_step(6)
+                # 🔥 올바른 방식: Step 5의 결과를 가져오기
+                step05_data = current_result.get_data_for_step(5)  # Step 5 결과
+                step02_data = current_result.get_data_for_step(2)  # Step 2 결과 (포즈 데이터)
+                step03_data = current_result.get_data_for_step(3)  # Step 3 결과 (의류 마스크)
                 
                 input_data.update({
                     'person_image': original_inputs.get('person_image'),
-                    'cloth_image': step05_data.get('warped_clothing', original_inputs.get('clothing_image')),
-                    'pose_data': current_result.pipeline_data.get('pose_keypoints'),
-                    'cloth_mask': current_result.pipeline_data.get('clothing_masks'),
-                    'style_preferences': original_inputs.get('style_preferences', {})
+                    'cloth_image': step05_data.get('warped_clothing', original_inputs.get('clothing_image')),  # Step 5: 변형된 의류
+                    'pose_data': step02_data.get('keypoints_18', []),  # Step 2: 포즈 키포인트
+                    'cloth_mask': step03_data.get('segmentation_masks', {}).get('all_clothes', None),  # Step 3: 의류 분할 마스크
+                    'style_preferences': original_inputs.get('style_preferences', {}),
+                    'warping_quality': step05_data.get('warping_quality', 'high'),  # Step 5: 변형 품질
+                    'transformation_matrix': step05_data.get('transformation_matrix')  # Step 5: 변형 행렬
                 })
             
             elif step_id == 7:  # PostProcessing
-                step06_data = current_result.get_data_for_step(7)
+                # 🔥 올바른 방식: Step 6의 결과를 가져오기
+                step06_data = current_result.get_data_for_step(6)  # Step 6 결과
                 
                 input_data.update({
-                    'fitted_image': step06_data.get('fitted_image'),
-                    'enhancement_level': original_inputs.get('enhancement_level', 'medium')
+                    'fitted_image': step06_data.get('fitted_image'),  # Step 6: 가상 피팅 결과 이미지
+                    'enhancement_level': original_inputs.get('enhancement_level', 'medium'),
+                    'fitting_quality': step06_data.get('fitting_quality', 'high'),  # Step 6: 피팅 품질
+                    'confidence_score': step06_data.get('confidence_score', 0.8),  # Step 6: 신뢰도 점수
+                    'virtual_fitting_result': step06_data.get('virtual_fitting_result', {})  # Step 6: 피팅 결과 데이터
                 })
             
             elif step_id == 8:  # QualityAssessment
-                step07_data = current_result.get_data_for_step(8)
+                # 🔥 올바른 방식: Step 7의 결과를 가져오기
+                step07_data = current_result.get_data_for_step(7)  # Step 7 결과
                 
                 input_data.update({
-                    'final_image': step07_data.get('enhanced_image'),
+                    'final_image': step07_data.get('enhanced_image'),  # Step 7: 후처리된 최종 이미지
                     'original_images': {
                         'person': original_inputs.get('person_image'),
                         'clothing': original_inputs.get('clothing_image')
                     },
-                    'analysis_depth': original_inputs.get('analysis_depth', 'comprehensive')
+                    'analysis_depth': original_inputs.get('analysis_depth', 'comprehensive'),
+                    'enhancement_quality': step07_data.get('enhancement_quality', 'high'),  # Step 7: 향상 품질
+                    'post_processing_result': step07_data.get('post_processing_result', {}),  # Step 7: 후처리 결과
+                    'enhancement_metrics': step07_data.get('enhancement_metrics', {})  # Step 7: 향상 지표
                 })
             
             return input_data
@@ -1110,63 +1141,77 @@ class DIContainerDataFlowEngine:
                 if data_converter:
                     data_flow_stats['di_container_services_used'].append('data_converter')
             
-            # 데이터 흐름 규칙에 따라 다음 Step들에 데이터 전달
-            flow_rules = self.data_flow_rules.get(step_id, {})
-            outputs_to = flow_rules.get('outputs_to', {})
-            
-            self.logger.debug(f"   - Step {step_id} 데이터 흐름 규칙: {outputs_to}")
-            
-            for target_step, data_keys in outputs_to.items():
-                target_data = {}
-                step_data_loss_count = 0
-                
-                data_flow_stats['total_transfers'] += 1
-                
-                # 🔥 데이터 키별 상세 검증 및 복사
-                for key in data_keys:
-                    if key in step_result:
-                        target_data[key] = step_result[key]
-                        self.logger.debug(f"     - {key} → Step {target_step}: ✅")
-                    elif 'data' in step_result and key in step_result['data']:
-                        target_data[key] = step_result['data'][key]
-                        self.logger.debug(f"     - {key} → Step {target_step}: ✅ (nested)")
-                    else:
-                        step_data_loss_count += 1
-                        data_flow_stats['data_loss_detected'] += 1
-                        data_flow_stats['warnings'].append(f"Step {target_step}: {key} 키 누락")
-                        self.logger.warning(f"⚠️ Step {target_step}: {key} 키가 step_result에 없음")
-                
-                # 🔥 데이터 손실 검증
-                if step_data_loss_count > 0:
-                    self.logger.warning(f"⚠️ Step {step_id} → Step {target_step}: {step_data_loss_count}개 데이터 손실")
-                else:
+            # 🔥 _apply_step_data_flow 메서드를 통한 데이터 흐름 처리
+            step_instance = self.step_manager.get_step_by_id(step_id) if hasattr(self, 'step_manager') else None
+            if step_instance:
+                try:
+                    enhanced_result = self._apply_step_data_flow(
+                        step_result, step_instance, step_id, current_result
+                    )
+                    self.logger.info(f"✅ Step {step_id} 데이터 흐름 처리 완료")
                     data_flow_stats['successful_transfers'] += 1
-                    self.logger.debug(f"✅ Step {step_id} → Step {target_step}: 모든 데이터 전달 성공")
+                except Exception as flow_error:
+                    self.logger.error(f"❌ Step {step_id} 데이터 흐름 처리 실패: {flow_error}")
+                    data_flow_stats['errors'].append(f"데이터 흐름 처리 실패: {flow_error}")
+            else:
+                # 🔥 폴백: 기존 데이터 흐름 규칙 사용
+                self.logger.warning(f"⚠️ Step {step_id} 인스턴스를 찾을 수 없어 기존 규칙 사용")
+                flow_rules = self.data_flow_rules.get(step_id, {})
+                outputs_to = flow_rules.get('outputs_to', {})
                 
-                # 대상 Step의 for_step_XX 필드에 데이터 설정
-                target_field = f'for_step_{target_step:02d}'
-                if hasattr(current_result, target_field):
-                    existing_data = getattr(current_result, target_field)
-                    existing_data.update(target_data)
-                    setattr(current_result, target_field, existing_data)
+                self.logger.debug(f"   - Step {step_id} 데이터 흐름 규칙: {outputs_to}")
+                
+                for target_step, data_keys in outputs_to.items():
+                    target_data = {}
+                    step_data_loss_count = 0
                     
-                    # 🔥 데이터 크기 로깅
-                    try:
-                        total_size_mb = 0
-                        for value in target_data.values():
-                            if hasattr(value, 'nbytes'):
-                                total_size_mb += value.nbytes / (1024 * 1024)
-                            elif hasattr(value, 'shape'):
-                                total_size_mb += np.prod(value.shape) * value.dtype.itemsize / (1024 * 1024)
+                    data_flow_stats['total_transfers'] += 1
+                    
+                    # 🔥 데이터 키별 상세 검증 및 복사
+                    for key in data_keys:
+                        if key in step_result:
+                            target_data[key] = step_result[key]
+                            self.logger.debug(f"     - {key} → Step {target_step}: ✅")
+                        elif 'data' in step_result and key in step_result['data']:
+                            target_data[key] = step_result['data'][key]
+                            self.logger.debug(f"     - {key} → Step {target_step}: ✅ (nested)")
+                        else:
+                            step_data_loss_count += 1
+                            data_flow_stats['data_loss_detected'] += 1
+                            data_flow_stats['warnings'].append(f"Step {target_step}: {key} 키 누락")
+                            self.logger.warning(f"⚠️ Step {target_step}: {key} 키가 step_result에 없음")
+                    
+                    # 🔥 데이터 손실 검증
+                    if step_data_loss_count > 0:
+                        self.logger.warning(f"⚠️ Step {step_id} → Step {target_step}: {step_data_loss_count}개 데이터 손실")
+                    else:
+                        data_flow_stats['successful_transfers'] += 1
+                        self.logger.debug(f"✅ Step {step_id} → Step {target_step}: 모든 데이터 전달 성공")
+                    
+                    # 대상 Step의 for_step_XX 필드에 데이터 설정
+                    target_field = f'for_step_{target_step:02d}'
+                    if hasattr(current_result, target_field):
+                        existing_data = getattr(current_result, target_field)
+                        existing_data.update(target_data)
+                        setattr(current_result, target_field, existing_data)
                         
-                        if total_size_mb > 50:  # 50MB 이상
-                            self.logger.info(f"📊 Step {step_id} → Step {target_step}: {total_size_mb:.2f}MB 전달")
+                        # 🔥 데이터 크기 로깅
+                        try:
+                            total_size_mb = 0
+                            for value in target_data.values():
+                                if hasattr(value, 'nbytes'):
+                                    total_size_mb += value.nbytes / (1024 * 1024)
+                                elif hasattr(value, 'shape'):
+                                    total_size_mb += np.prod(value.shape) * value.dtype.itemsize / (1024 * 1024)
                             
-                    except Exception as size_error:
-                        pass
-                else:
-                    self.logger.error(f"❌ Step {step_id}: {target_field} 필드가 없음")
-                    data_flow_stats['errors'].append(f"{target_field} 필드 없음")
+                            if total_size_mb > 50:  # 50MB 이상
+                                self.logger.info(f"📊 Step {step_id} → Step {target_step}: {total_size_mb:.2f}MB 전달")
+                                
+                        except Exception as size_error:
+                            pass
+                    else:
+                        self.logger.error(f"❌ Step {step_id}: {target_field} 필드가 없음")
+                        data_flow_stats['errors'].append(f"{target_field} 필드 없음")
             
             # 파이프라인 전체 데이터 업데이트
             current_result.pipeline_data.update({
@@ -1453,10 +1498,18 @@ class PipelineManager:
                     if not step_instance:
                         raise RuntimeError(f"Step {step_name} 인스턴스를 찾을 수 없습니다")
                     
+                    # 🔥 Step 입력 데이터 준비
+                    step_input = self.data_flow_engine.prepare_step_input(
+                        step_id, pipeline_result, original_inputs
+                    )
+                    
                     # 🔥 DetailedDataSpec 기반 입력 전처리
                     step_input = self._apply_detailed_data_spec_processing(
                         step_instance, step_input, step_id
                     )
+                    
+                    # 🔥 pipeline_result를 step_input에 추가
+                    step_input['pipeline_result'] = pipeline_result
                     
                     # 🔥 RealAIStepImplementationManager를 통한 처리 시도
                     step_result = await self._process_step_via_implementation_manager(
@@ -1487,6 +1540,7 @@ class PipelineManager:
                         step_result, step_instance, step_id, pipeline_result
                     )
                     
+                    # 🔥 data_flow_engine은 메타데이터만 업데이트 (데이터는 _apply_step_data_flow에서 처리됨)
                     pipeline_result = self.data_flow_engine.process_step_output(
                         step_id, step_result, pipeline_result
                     )
@@ -1821,37 +1875,172 @@ class PipelineManager:
             
             # 🔥 다음 Step을 위한 데이터 준비
             if provides_to_next_step:
-                for next_step_id, data_mapping in provides_to_next_step.items():
-                    if isinstance(next_step_id, int) and 1 <= next_step_id <= 8:
-                        next_step_data = {}
+                for next_step_name, data_mapping in provides_to_next_step.items():
+                    # Step ID 추출 (예: "PoseEstimationStep" -> 2)
+                    next_step_id = self._extract_step_id_from_name(next_step_name)
+                    if next_step_id:
+                        field_name = f"for_step_{next_step_id:02d}"
                         
-                        for output_key, next_input_key in data_mapping.items():
-                            if output_key in enhanced_result:
-                                next_step_data[next_input_key] = enhanced_result[output_key]
+                        # Step별 데이터 매핑
+                        mapped_data = self._map_step_data_for_next_step(
+                            step_result, step_id, next_step_id, data_mapping
+                        )
                         
-                        # 파이프라인 결과에 다음 Step 데이터 설정
-                        target_field = f'for_step_{next_step_id:02d}'
-                        if hasattr(pipeline_result, target_field):
-                            existing_data = getattr(pipeline_result, target_field)
-                            existing_data.update(next_step_data)
-                            setattr(pipeline_result, target_field, existing_data)
-            
-            # 🔥 출력 스키마 검증
-            if step_output_schema:
-                for key, expected_type in step_output_schema.items():
-                    if key in enhanced_result:
-                        actual_value = enhanced_result[key]
-                        if expected_type == 'tensor' and not isinstance(actual_value, torch.Tensor):
-                            self.logger.warning(f"⚠️ {key} 타입 불일치: {type(actual_value)} vs tensor")
-                        elif expected_type == 'image' and not isinstance(actual_value, (Image.Image, torch.Tensor)):
-                            self.logger.warning(f"⚠️ {key} 타입 불일치: {type(actual_value)} vs image")
+                        # Pipeline 결과에 저장
+                        setattr(pipeline_result, field_name, mapped_data)
+                        
+                        self.logger.info(f"✅ Step {step_id} → Step {next_step_id} 데이터 매핑 완료")
             
             return enhanced_result
             
         except Exception as e:
             self.logger.error(f"❌ Step 데이터 흐름 처리 실패: {e}")
             return step_result
-
+    
+    def _extract_step_id_from_name(self, step_name: str) -> Optional[int]:
+        """Step 이름에서 ID 추출"""
+        step_id_mapping = {
+            'HumanParsingStep': 1,
+            'PoseEstimationStep': 2,
+            'ClothSegmentationStep': 3,
+            'GeometricMatchingStep': 4,
+            'ClothWarpingStep': 5,
+            'VirtualFittingStep': 6,
+            'PostProcessingStep': 7,
+            'QualityAssessmentStep': 8
+        }
+        return step_id_mapping.get(step_name)
+    
+    def _map_step_data_for_next_step(
+        self, 
+        step_result: Dict[str, Any], 
+        current_step_id: int, 
+        next_step_id: int, 
+        data_mapping: Dict[str, str]
+    ) -> Dict[str, Any]:
+        """Step 간 데이터 매핑"""
+        try:
+            mapped_data = {}
+            
+            # Step 1 → Step 2, 3, 4, 5, 6 (Human Parsing 결과)
+            if current_step_id == 1:
+                # 🔥 Step 1의 실제 결과 구조에 맞게 매핑 - AI 모델이 기대하는 구조
+                if 'parsing_map' in step_result:
+                    mapped_data['parsing_mask'] = step_result['parsing_map']
+                    # Step 4, 5에서 기대하는 구조
+                    mapped_data['person_parsing'] = {
+                        'parsing_map': step_result['parsing_map'],
+                        'confidence': step_result.get('confidence', 0.8),
+                        'result': step_result.get('result', step_result)
+                    }
+                if 'intermediate_results' in step_result:
+                    intermediate = step_result['intermediate_results']
+                    mapped_data['body_masks'] = intermediate.get('body_mask')
+                    mapped_data['clothing_mask'] = intermediate.get('clothing_mask')
+                    mapped_data['skin_mask'] = intermediate.get('skin_mask')
+                    mapped_data['face_mask'] = intermediate.get('face_mask')
+                    mapped_data['arms_mask'] = intermediate.get('arms_mask')
+                    mapped_data['legs_mask'] = intermediate.get('legs_mask')
+                    mapped_data['detected_body_parts'] = intermediate.get('detected_body_parts')
+                    mapped_data['clothing_regions'] = intermediate.get('clothing_regions')
+                if 'confidence_map' in step_result:
+                    mapped_data['parsing_confidence'] = step_result['confidence_map']
+                if 'detected_parts' in step_result:
+                    mapped_data['detected_parts'] = step_result['detected_parts']
+            
+            # Step 2 → Step 3, 4, 5, 6 (Pose Estimation 결과)
+            elif current_step_id == 2:
+                # 🔥 Step 2의 실제 결과 구조에 맞게 매핑 - AI 모델이 기대하는 구조
+                if 'keypoints' in step_result:
+                    mapped_data['keypoints_18'] = step_result['keypoints']  # COCO 17개 + 1개 = 18개
+                    mapped_data['pose_keypoints'] = step_result['keypoints']  # 호환성을 위한 별칭
+                    # Step 4, 5에서 기대하는 구조
+                    mapped_data['pose_data'] = step_result['keypoints']
+                if 'intermediate_results' in step_result:
+                    intermediate = step_result['intermediate_results']
+                    mapped_data['keypoints_numpy'] = intermediate.get('keypoints_numpy')
+                    mapped_data['confidence_scores'] = intermediate.get('confidence_scores')
+                    mapped_data['joint_angles'] = intermediate.get('joint_angles_dict')
+                    mapped_data['body_proportions'] = intermediate.get('body_proportions_dict')
+                    mapped_data['skeleton_structure'] = intermediate.get('skeleton_structure')
+                    mapped_data['landmarks'] = intermediate.get('landmarks_dict')
+                    mapped_data['body_bbox'] = intermediate.get('body_bbox')
+                    mapped_data['torso_bbox'] = intermediate.get('torso_bbox')
+                    mapped_data['head_bbox'] = intermediate.get('head_bbox')
+                    mapped_data['arms_bbox'] = intermediate.get('arms_bbox')
+                    mapped_data['legs_bbox'] = intermediate.get('legs_bbox')
+                    mapped_data['pose_direction'] = intermediate.get('pose_direction')
+                    mapped_data['pose_stability'] = intermediate.get('pose_stability')
+                    mapped_data['body_orientation'] = intermediate.get('body_orientation')
+                if 'overall_confidence' in step_result:
+                    mapped_data['pose_confidence'] = step_result['overall_confidence']
+            
+            # Step 3 → Step 4, 5, 6 (Cloth Segmentation 결과)
+            elif current_step_id == 3:
+                # 🔥 Step 3의 실제 결과 구조에 맞게 매핑 - AI 모델이 기대하는 구조
+                if 'segmentation_masks' in step_result:
+                    mapped_data['segmentation_masks'] = step_result['segmentation_masks']
+                    # 주요 마스크들 개별 매핑
+                    masks = step_result['segmentation_masks']
+                    mapped_data['all_clothes'] = masks.get('all_clothes')
+                    mapped_data['upper_clothes'] = masks.get('upper_clothes')
+                    mapped_data['lower_clothes'] = masks.get('lower_clothes')
+                    mapped_data['dresses'] = masks.get('dresses')
+                    mapped_data['accessories'] = masks.get('accessories')
+                if 'cloth_mask' in step_result:
+                    mapped_data['cloth_mask'] = step_result['cloth_mask']
+                    # Step 4, 5에서 기대하는 구조
+                    mapped_data['clothing_segmentation'] = {
+                        'cloth_mask': step_result['cloth_mask'],
+                        'confidence': step_result.get('confidence', 0.8)
+                    }
+                if 'segmented_cloth' in step_result:
+                    mapped_data['segmented_clothing'] = step_result['segmented_cloth']
+                if 'confidence' in step_result:
+                    mapped_data['segmentation_confidence'] = step_result['confidence']
+                if 'cloth_features' in step_result:
+                    mapped_data['cloth_features'] = step_result['cloth_features']
+                if 'cloth_contours' in step_result:
+                    mapped_data['cloth_contours'] = step_result['cloth_contours']
+                if 'parsing_map' in step_result:
+                    mapped_data['parsing_map'] = step_result['parsing_map']
+            
+            # Step 4 → Step 5, 6 (Geometric Matching 결과)
+            elif current_step_id == 4:
+                # 🔥 Step 4의 실제 결과 구조에 맞게 매핑 - AI 모델이 기대하는 구조
+                if 'matching_result' in step_result:
+                    mapped_data['geometric_matching'] = step_result['matching_result']
+                if 'transformation_matrix' in step_result:
+                    mapped_data['transformation_matrix'] = step_result['transformation_matrix']
+                    # Step 5에서 기대하는 구조
+                    mapped_data['step_4_transformation_matrix'] = step_result['transformation_matrix']
+                if 'confidence' in step_result:
+                    mapped_data['matching_confidence'] = step_result['confidence']
+            
+            # Step 5 → Step 6 (Cloth Warping 결과)
+            elif current_step_id == 5:
+                if 'warped_cloth' in step_result:
+                    mapped_data['warped_cloth'] = step_result['warped_cloth']
+                if 'warping_grid' in step_result:
+                    mapped_data['warping_grid'] = step_result['warping_grid']
+                if 'confidence' in step_result:
+                    mapped_data['warping_confidence'] = step_result['confidence']
+            
+            # 원본 입력 데이터도 포함
+            if 'original_inputs' in step_result:
+                mapped_data['original_inputs'] = step_result['original_inputs']
+            
+            # 메타데이터 포함
+            if 'metadata' in step_result:
+                mapped_data['metadata'] = step_result['metadata']
+            
+            self.logger.info(f"✅ Step {current_step_id} → Step {next_step_id} 데이터 매핑: {list(mapped_data.keys())}")
+            return mapped_data
+            
+        except Exception as e:
+            self.logger.error(f"❌ Step {current_step_id} → Step {next_step_id} 데이터 매핑 실패: {e}")
+            return {}
+    
     # ==============================================
     # 🔥 DI Container 기반 처리 메서드들
     # ==============================================

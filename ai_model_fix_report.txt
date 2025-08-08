@@ -1,0 +1,23 @@
+🔥 AI 모델 수정 리포트
+================================================================================
+📅 수정 시간: 2025-08-08 03:13:20
+
+📊 전체 문제 모델: 7개
+✅ 수정 완료: 0개
+❌ 수정 실패: 7개
+
+❌ 수정 실패한 모델들:
+   - training_args.bin
+     문제: 모든 로딩 방법 실패: Error while deserializing header: header too large
+   - pytorch_model.bin
+     문제: 파일이 존재하지 않음
+   - graphonomy.pth
+     문제: 모든 로딩 방법 실패: Error while deserializing header: header too large
+   - graphonomy_root.pth
+     문제: 모든 로딩 방법 실패: Error while deserializing header: header too large
+   - u2net_official.pth
+     문제: 모든 로딩 방법 실패: Error while deserializing header: header too large
+   - text_encoder_pytorch_model.bin
+     문제: 모든 로딩 방법 실패: Error while deserializing header: invalid JSON in header: EOF while parsing a value at line 1 column 0
+   - vae_diffusion_pytorch_model.bin
+     문제: 모든 로딩 방법 실패: Error while deserializing header: invalid JSON in header: EOF while parsing a value at line 1 column 0

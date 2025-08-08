@@ -1,0 +1,24 @@
+🔥 AI 모델 호환성 개선 리포트
+================================================================================
+📅 개선 시간: 2025-08-08 03:47:14
+
+📊 호환성 개선 결과:
+   ✅ 성공: 12개
+   ❌ 실패: 1개
+
+✅ 호환성 개선 완료된 모델들:
+   - tps_network.pth
+   - tps_transformation.pth
+   - gmm_final.pth
+   - inference.pth
+   - model.safetensors
+   - optimizer.pt
+   - pytorch_model.bin
+   - rng_state.pth
+   - scheduler.pt
+   - exp-schp-201908261155-atr.pth
+   - pytorch_model.bin
+   - pytorch_model.bin
+
+❌ 호환성 개선 실패한 모델들:
+   - training_args.bin

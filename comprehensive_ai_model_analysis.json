@@ -1,0 +1,3747 @@
+{
+  "analysis_time": "2025-08-08T03:55:26.423576",
+  "total_models": 187,
+  "valid_models": 181,
+  "invalid_models": 6,
+  "models": {
+    "backend/ai_models/Graphonomy/inference.pth": {
+      "size_mb": 255.14592933654785,
+      "exists": true,
+      "valid": true,
+      "structure_type": "state_dict",
+      "architecture_hints": [
+        "graphonomy (매칭: 2개)",
+        "deeplabv3plus (매칭: 1개)",
+        "sam (매칭: 1개)",
+        "hrnet (매칭: 2개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "표준 state_dict 구조"
+      ],
+      "step_category": "step_01",
+      "model_type": "graphonomy",
+      "fixed": false
+    },
+    "backend/ai_models/Graphonomy/model.safetensors": {
+      "size_mb": 104.47222328186035,
+      "exists": true,
+      "valid": true,
+      "structure_type": "state_dict",
+      "architecture_hints": [
+        "graphonomy (매칭: 2개)",
+        "deeplabv3plus (매칭: 1개)",
+        "swinir (매칭: 2개)",
+        "vit (매칭: 2개)",
+        "hrnet (매칭: 1개)",
+        "densenet (매칭: 1개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "표준 state_dict 구조"
+      ],
+      "step_category": "step_01",
+      "model_type": "graphonomy",
+      "fixed": false
+    },
+    "backend/ai_models/Graphonomy/optimizer.pt": {
+      "size_mb": 208.9450626373291,
+      "exists": true,
+      "valid": true,
+      "structure_type": "state_dict",
+      "architecture_hints": [],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "표준 state_dict 구조"
+      ],
+      "step_category": "step_01",
+      "model_type": "graphonomy",
+      "fixed": false
+    },
+    "backend/ai_models/Graphonomy/pytorch_model.bin": {
+      "size_mb": 104.49822425842285,
+      "exists": true,
+      "valid": true,
+      "structure_type": "state_dict",
+      "architecture_hints": [
+        "graphonomy (매칭: 2개)",
+        "deeplabv3plus (매칭: 1개)",
+        "swinir (매칭: 2개)",
+        "vit (매칭: 2개)",
+        "hrnet (매칭: 1개)",
+        "densenet (매칭: 1개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "표준 state_dict 구조"
+      ],
+      "step_category": "step_01",
+      "model_type": "graphonomy",
+      "fixed": false
+    },
+    "backend/ai_models/Graphonomy/rng_state.pth": {
+      "size_mb": 0.014377593994140625,
+      "exists": true,
+      "valid": true,
+      "structure_type": "state_dict",
+      "architecture_hints": [],
+      "issues": [],
+      "recommendations": [
+        "weights_only=False로 로딩됨 (보안 주의)",
+        "표준 state_dict 구조"
+      ],
+      "step_category": "step_01",
+      "model_type": "graphonomy",
+      "fixed": false
+    },
+    "backend/ai_models/Graphonomy/scheduler.pt": {
+      "size_mb": 0.00101470947265625,
+      "exists": true,
+      "valid": true,
+      "structure_type": "state_dict",
+      "architecture_hints": [],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "표준 state_dict 구조"
+      ],
+      "step_category": "step_01",
+      "model_type": "graphonomy",
+      "fixed": false
+    },
+    "backend/ai_models/Graphonomy/training_args.bin": {
+      "size_mb": 0.0031690597534179688,
+      "exists": true,
+      "valid": true,
+      "structure_type": "<class 'transformers.training_args.TrainingArguments'>",
+      "architecture_hints": [],
+      "issues": [
+        "지원하지 않는 타입: <class 'transformers.training_args.TrainingArguments'>"
+      ],
+      "recommendations": [
+        "weights_only=False로 로딩됨 (보안 주의)",
+        "호환성 수정 완료"
+      ],
+      "step_category": "step_01",
+      "model_type": "graphonomy",
+      "fixed": true
+    },
+    "backend/ai_models/Self-Correction-Human-Parsing/exp-schp-201908261155-atr.pth": {
+      "size_mb": 255.1512851715088,
+      "exists": true,
+      "valid": true,
+      "structure_type": "state_dict",
+      "architecture_hints": [
+        "graphonomy (매칭: 1개)",
+        "deeplabv3plus (매칭: 1개)",
+        "sam (매칭: 1개)",
+        "hrnet (매칭: 1개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "표준 state_dict 구조"
+      ],
+      "step_category": "step_01",
+      "model_type": "unknown",
+      "fixed": false
+    },
+    "backend/ai_models/cache/models--levihsu--OOTDiffusion/snapshots/c79f9dd0585743bea82a39261cc09a24040bc4f9/checkpoints/ootd/text_encoder/pytorch_model.bin": {
+      "size_mb": 469.5010051727295,
+      "exists": true,
+      "valid": true,
+      "structure_type": "state_dict",
+      "architecture_hints": [
+        "stable_diffusion (매칭: 1개)",
+        "swinir (매칭: 2개)",
+        "vit (매칭: 2개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "표준 state_dict 구조"
+      ],
+      "step_category": "step_06",
+      "model_type": "ootd",
+      "fixed": false
+    },
+    "backend/ai_models/cache/models--mattmdjaga--segformer_b2_clothes/snapshots/c4d76e5d0058ab0e3e805d5382c44d5bd059fee3/pytorch_model.bin": {
+      "size_mb": 104.49810218811035,
+      "exists": true,
+      "valid": true,
+      "structure_type": "state_dict",
+      "architecture_hints": [
+        "graphonomy (매칭: 1개)",
+        "deeplabv3plus (매칭: 1개)",
+        "swinir (매칭: 2개)",
+        "vit (매칭: 2개)",
+        "densenet (매칭: 1개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "표준 state_dict 구조"
+      ],
+      "step_category": "unknown",
+      "model_type": "unknown",
+      "fixed": false
+    },
+    "backend/ai_models/checkpoints/ootd_3.2gb.pth": {
+      "size_mb": 3278.9360275268555,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "sam (매칭: 1개)",
+        "swinir (매칭: 1개)",
+        "clip (매칭: 1개)",
+        "vit (매칭: 2개)",
+        "resnet (매칭: 1개)",
+        "unet (매칭: 5개)",
+        "diffusion (매칭: 5개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "SafeTensors로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "step_06",
+      "model_type": "ootd",
+      "fixed": false
+    },
+    "backend/ai_models/checkpoints/ootdiffusion/checkpoints/ootd/ootd_dc/checkpoint-36000/unet_garm/diffusion_pytorch_model.safetensors": {
+      "size_mb": 3278.892074584961,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "sam (매칭: 1개)",
+        "swinir (매칭: 1개)",
+        "clip (매칭: 1개)",
+        "vit (매칭: 2개)",
+        "resnet (매칭: 1개)",
+        "unet (매칭: 5개)",
+        "diffusion (매칭: 5개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "SafeTensors로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "step_06",
+      "model_type": "ootd",
+      "fixed": false
+    },
+    "backend/ai_models/checkpoints/ootdiffusion/checkpoints/ootd/ootd_dc/checkpoint-36000/unet_vton/diffusion_pytorch_model.safetensors": {
+      "size_mb": 3278.9360275268555,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "sam (매칭: 1개)",
+        "swinir (매칭: 1개)",
+        "clip (매칭: 1개)",
+        "vit (매칭: 2개)",
+        "resnet (매칭: 1개)",
+        "unet (매칭: 5개)",
+        "diffusion (매칭: 5개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "SafeTensors로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "step_06",
+      "model_type": "ootd",
+      "fixed": false
+    },
+    "backend/ai_models/checkpoints/ootdiffusion/checkpoints/ootd/ootd_hd/checkpoint-36000/unet_garm/diffusion_pytorch_model.safetensors": {
+      "size_mb": 3278.892074584961,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "sam (매칭: 1개)",
+        "swinir (매칭: 1개)",
+        "clip (매칭: 1개)",
+        "vit (매칭: 2개)",
+        "resnet (매칭: 1개)",
+        "unet (매칭: 5개)",
+        "diffusion (매칭: 5개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "SafeTensors로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "step_06",
+      "model_type": "ootd",
+      "fixed": false
+    },
+    "backend/ai_models/checkpoints/ootdiffusion/checkpoints/ootd/ootd_hd/checkpoint-36000/unet_vton/diffusion_pytorch_model.safetensors": {
+      "size_mb": 3278.9360275268555,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "sam (매칭: 1개)",
+        "swinir (매칭: 1개)",
+        "clip (매칭: 1개)",
+        "vit (매칭: 2개)",
+        "resnet (매칭: 1개)",
+        "unet (매칭: 5개)",
+        "diffusion (매칭: 5개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "SafeTensors로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "step_06",
+      "model_type": "ootd",
+      "fixed": false
+    },
+    "backend/ai_models/checkpoints/pose_estimation/dpt_hybrid-midas-501f0c75.pt": {
+      "size_mb": 466.9650926589966,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "graphonomy (매칭: 1개)",
+        "deeplabv3plus (매칭: 1개)",
+        "sam (매칭: 1개)",
+        "swinir (매칭: 2개)",
+        "vit (매칭: 1개)",
+        "hrnet (매칭: 1개)",
+        "dpt (매칭: 1개)",
+        "resnet (매칭: 1개)",
+        "densenet (매칭: 1개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "step_05",
+      "model_type": "dpt",
+      "fixed": false
+    },
+    "backend/ai_models/checkpoints/pose_estimation/dpt_large-501f0c75.pt": {
+      "size_mb": 1304.227032661438,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "swinir (매칭: 3개)",
+        "vit (매칭: 2개)",
+        "hrnet (매칭: 1개)",
+        "dpt (매칭: 1개)",
+        "resnet (매칭: 1개)",
+        "densenet (매칭: 1개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "step_05",
+      "model_type": "dpt",
+      "fixed": false
+    },
+    "backend/ai_models/checkpoints/stable-diffusion-v1-5/safety_checker/model.fp16.safetensors": {
+      "size_mb": 579.8515701293945,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "stable_diffusion (매칭: 1개)",
+        "swinir (매칭: 3개)",
+        "clip (매칭: 1개)",
+        "vit (매칭: 3개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "SafeTensors로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "unknown",
+      "model_type": "unknown",
+      "fixed": false
+    },
+    "backend/ai_models/checkpoints/stable-diffusion-v1-5/safety_checker/model.safetensors": {
+      "size_mb": 1159.650640487671,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "stable_diffusion (매칭: 1개)",
+        "swinir (매칭: 3개)",
+        "clip (매칭: 1개)",
+        "vit (매칭: 3개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "SafeTensors로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "unknown",
+      "model_type": "unknown",
+      "fixed": false
+    },
+    "backend/ai_models/checkpoints/stable-diffusion-v1-5/text_encoder/model.fp16.safetensors": {
+      "size_mb": 234.74203491210938,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "stable_diffusion (매칭: 1개)",
+        "swinir (매칭: 2개)",
+        "vit (매칭: 2개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "SafeTensors로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "unknown",
+      "model_type": "unknown",
+      "fixed": false
+    },
+    "backend/ai_models/checkpoints/stable-diffusion-v1-5/text_encoder/model.safetensors": {
+      "size_mb": 469.4613208770752,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "stable_diffusion (매칭: 1개)",
+        "swinir (매칭: 2개)",
+        "vit (매칭: 2개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "SafeTensors로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "unknown",
+      "model_type": "unknown",
+      "fixed": false
+    },
+    "backend/ai_models/checkpoints/stable-diffusion-v1-5/unet/diffusion_pytorch_model.fp16.safetensors": {
+      "size_mb": 1639.4856491088867,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "sam (매칭: 1개)",
+        "swinir (매칭: 1개)",
+        "clip (매칭: 1개)",
+        "vit (매칭: 2개)",
+        "resnet (매칭: 1개)",
+        "unet (매칭: 5개)",
+        "diffusion (매칭: 5개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "SafeTensors로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "unknown",
+      "model_type": "unknown",
+      "fixed": false
+    },
+    "backend/ai_models/checkpoints/stable-diffusion-v1-5/unet/diffusion_pytorch_model.non_ema.safetensors": {
+      "size_mb": 3278.892074584961,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "sam (매칭: 1개)",
+        "swinir (매칭: 1개)",
+        "clip (매칭: 1개)",
+        "vit (매칭: 2개)",
+        "resnet (매칭: 1개)",
+        "unet (매칭: 5개)",
+        "diffusion (매칭: 5개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "SafeTensors로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "unknown",
+      "model_type": "unknown",
+      "fixed": false
+    },
+    "backend/ai_models/checkpoints/stable-diffusion-v1-5/unet/diffusion_pytorch_model.safetensors": {
+      "size_mb": 3278.892078399658,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "sam (매칭: 1개)",
+        "swinir (매칭: 1개)",
+        "clip (매칭: 1개)",
+        "vit (매칭: 2개)",
+        "resnet (매칭: 1개)",
+        "unet (매칭: 5개)",
+        "diffusion (매칭: 5개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "SafeTensors로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "unknown",
+      "model_type": "unknown",
+      "fixed": false
+    },
+    "backend/ai_models/checkpoints/stable-diffusion-v1-5/v1-5-pruned-emaonly.safetensors": {
+      "size_mb": 4067.5604858398438,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "graphonomy (매칭: 1개)",
+        "deeplabv3plus (매칭: 1개)",
+        "sam (매칭: 1개)",
+        "stable_diffusion (매칭: 2개)",
+        "swinir (매칭: 2개)",
+        "clip (매칭: 2개)",
+        "vit (매칭: 3개)",
+        "hrnet (매칭: 1개)",
+        "unet (매칭: 2개)",
+        "diffusion (매칭: 2개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "SafeTensors로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "unknown",
+      "model_type": "unknown",
+      "fixed": false
+    },
+    "backend/ai_models/checkpoints/stable-diffusion-v1-5/v1-5-pruned.safetensors": {
+      "size_mb": 7346.462522506714,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "graphonomy (매칭: 1개)",
+        "deeplabv3plus (매칭: 1개)",
+        "sam (매칭: 1개)",
+        "stable_diffusion (매칭: 2개)",
+        "swinir (매칭: 2개)",
+        "clip (매칭: 2개)",
+        "vit (매칭: 3개)",
+        "hrnet (매칭: 1개)",
+        "unet (매칭: 2개)",
+        "diffusion (매칭: 2개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "SafeTensors로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "unknown",
+      "model_type": "unknown",
+      "fixed": false
+    },
+    "backend/ai_models/checkpoints/stable-diffusion-v1-5/vae/diffusion_pytorch_model.fp16.safetensors": {
+      "size_mb": 159.58341789245605,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "graphonomy (매칭: 1개)",
+        "deeplabv3plus (매칭: 1개)",
+        "sam (매칭: 1개)",
+        "swinir (매칭: 1개)",
+        "vit (매칭: 1개)",
+        "resnet (매칭: 1개)",
+        "unet (매칭: 4개)",
+        "diffusion (매칭: 4개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "SafeTensors로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "unknown",
+      "model_type": "unknown",
+      "fixed": false
+    },
+    "backend/ai_models/checkpoints/stable-diffusion-v1-5/vae/diffusion_pytorch_model.safetensors": {
+      "size_mb": 319.14069747924805,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "graphonomy (매칭: 1개)",
+        "deeplabv3plus (매칭: 1개)",
+        "sam (매칭: 1개)",
+        "swinir (매칭: 1개)",
+        "vit (매칭: 2개)",
+        "resnet (매칭: 1개)",
+        "unet (매칭: 4개)",
+        "diffusion (매칭: 4개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "SafeTensors로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "unknown",
+      "model_type": "unknown",
+      "fixed": false
+    },
+    "backend/ai_models/checkpoints/stable_diffusion_4.8gb.pth": {
+      "size_mb": 3278.892078399658,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "sam (매칭: 1개)",
+        "swinir (매칭: 1개)",
+        "clip (매칭: 1개)",
+        "vit (매칭: 2개)",
+        "resnet (매칭: 1개)",
+        "unet (매칭: 5개)",
+        "diffusion (매칭: 5개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "SafeTensors로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "step_06",
+      "model_type": "stable_diffusion",
+      "fixed": false
+    },
+    "backend/ai_models/checkpoints/viton_hd_2.1gb.pth": {
+      "size_mb": 230.42139339447021,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "sam (매칭: 1개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "step_05",
+      "model_type": "viton_hd",
+      "fixed": false
+    },
+    "backend/ai_models/common/pytorch_model.bin": {
+      "size_mb": 20.45078754425049,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "graphonomy (매칭: 1개)",
+        "deeplabv3plus (매칭: 1개)",
+        "swinir (매칭: 1개)",
+        "vit (매칭: 1개)",
+        "dpt (매칭: 1개)",
+        "efficientnet (매칭: 2개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "unknown",
+      "model_type": "unknown",
+      "fixed": false
+    },
+    "backend/ai_models/exp-schp-201908301523-atr.pth": {
+      "size_mb": 0.194610595703125,
+      "exists": true,
+      "valid": true,
+      "structure_type": "state_dict",
+      "architecture_hints": [],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "표준 state_dict 구조"
+      ],
+      "step_category": "unknown",
+      "model_type": "unknown",
+      "fixed": false
+    },
+    "backend/ai_models/experimental_models/controlnet_xl_canny/diffusion_pytorch_model.fp16.safetensors": {
+      "size_mb": 2386.225830078125,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "sam (매칭: 1개)",
+        "swinir (매칭: 1개)",
+        "clip (매칭: 1개)",
+        "vit (매칭: 2개)",
+        "resnet (매칭: 1개)",
+        "unet (매칭: 4개)",
+        "diffusion (매칭: 4개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "SafeTensors로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "unknown",
+      "model_type": "unknown",
+      "fixed": false
+    },
+    "backend/ai_models/experimental_models/sdxl_turbo_ultra/text_encoder/model.safetensors": {
+      "size_mb": 469.4606475830078,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "stable_diffusion (매칭: 1개)",
+        "swinir (매칭: 2개)",
+        "vit (매칭: 2개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "SafeTensors로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "unknown",
+      "model_type": "unknown",
+      "fixed": false
+    },
+    "backend/ai_models/experimental_models/sdxl_turbo_ultra/text_encoder_2/model.safetensors": {
+      "size_mb": 2649.976982116699,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "stable_diffusion (매칭: 1개)",
+        "swinir (매칭: 2개)",
+        "clip (매칭: 1개)",
+        "vit (매칭: 2개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "SafeTensors로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "unknown",
+      "model_type": "unknown",
+      "fixed": false
+    },
+    "backend/ai_models/experimental_models/sdxl_turbo_ultra/unet/diffusion_pytorch_model.fp16.safetensors": {
+      "size_mb": 4897.260437011719,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "sam (매칭: 1개)",
+        "swinir (매칭: 1개)",
+        "clip (매칭: 1개)",
+        "vit (매칭: 2개)",
+        "resnet (매칭: 1개)",
+        "unet (매칭: 5개)",
+        "diffusion (매칭: 5개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "SafeTensors로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "unknown",
+      "model_type": "unknown",
+      "fixed": false
+    },
+    "backend/ai_models/future_enhancements/face_enhancement/instantid_ultra/ControlNetModel/diffusion_pytorch_model.safetensors": {
+      "size_mb": 2386.225830078125,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "sam (매칭: 1개)",
+        "swinir (매칭: 1개)",
+        "clip (매칭: 1개)",
+        "vit (매칭: 2개)",
+        "resnet (매칭: 1개)",
+        "unet (매칭: 4개)",
+        "diffusion (매칭: 4개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "SafeTensors로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "unknown",
+      "model_type": "unknown",
+      "fixed": false
+    },
+    "backend/ai_models/future_enhancements/face_enhancement/instantid_ultra/ip-adapter.bin": {
+      "size_mb": 1612.7911958694458,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "swinir (매칭: 2개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "unknown",
+      "model_type": "unknown",
+      "fixed": false
+    },
+    "backend/ai_models/future_enhancements/face_enhancement/photomaker_ultra/photomaker-v1.bin": {
+      "size_mb": 890.8304376602173,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "stable_diffusion (매칭: 2개)",
+        "swinir (매칭: 3개)",
+        "clip (매칭: 2개)",
+        "vit (매칭: 4개)",
+        "unet (매칭: 2개)",
+        "diffusion (매칭: 2개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "step_05",
+      "model_type": "tom",
+      "fixed": false
+    },
+    "backend/ai_models/future_enhancements/video_generation/animatediff_ultra/mm_sd_v15_v2.ckpt": {
+      "size_mb": 1733.6735067367554,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "swinir (매칭: 1개)",
+        "clip (매칭: 1개)",
+        "vit (매칭: 1개)",
+        "unet (매칭: 2개)",
+        "diffusion (매칭: 2개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "unknown",
+      "model_type": "unknown",
+      "fixed": false
+    },
+    "backend/ai_models/human_parsing/models--mattmdjaga--segformer_b2_clothes/snapshots/c4d76e5d0058ab0e3e805d5382c44d5bd059fee3/pytorch_model.bin": {
+      "size_mb": 104.50268268585205,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "graphonomy (매칭: 1개)",
+        "deeplabv3plus (매칭: 1개)",
+        "swinir (매칭: 2개)",
+        "vit (매칭: 2개)",
+        "densenet (매칭: 1개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "unknown",
+      "model_type": "unknown",
+      "fixed": false
+    },
+    "backend/ai_models/human_parsing/schp/pytorch_model.bin": {
+      "size_mb": 104.50268268585205,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "graphonomy (매칭: 1개)",
+        "deeplabv3plus (매칭: 1개)",
+        "swinir (매칭: 2개)",
+        "vit (매칭: 2개)",
+        "densenet (매칭: 1개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "unknown",
+      "model_type": "unknown",
+      "fixed": false
+    },
+    "backend/ai_models/openpose.pth": {
+      "size_mb": 0.03664398193359375,
+      "exists": true,
+      "valid": true,
+      "structure_type": "model_wrapper",
+      "architecture_hints": [],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "모델 래퍼 구조"
+      ],
+      "step_category": "step_02",
+      "model_type": "openpose",
+      "fixed": false
+    },
+    "backend/ai_models/pytorch_model.bin": {
+      "size_mb": 0.0,
+      "exists": false,
+      "valid": false,
+      "structure_type": "unknown",
+      "architecture_hints": [],
+      "issues": [
+        "파일이 존재하지 않음"
+      ],
+      "recommendations": [],
+      "step_category": "unknown",
+      "model_type": "unknown",
+      "fixed": false
+    },
+    "backend/ai_models/step_01/deeplabv3plus.pth": {
+      "size_mb": 233.32293128967285,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "graphonomy (매칭: 2개)",
+        "deeplabv3plus (매칭: 2개)",
+        "sam (매칭: 1개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "step_01",
+      "model_type": "deeplabv3plus",
+      "fixed": false
+    },
+    "backend/ai_models/step_01/exp-schp-201908261155-atr.pth": {
+      "size_mb": 255.1512851715088,
+      "exists": true,
+      "valid": true,
+      "structure_type": "state_dict",
+      "architecture_hints": [
+        "graphonomy (매칭: 1개)",
+        "deeplabv3plus (매칭: 1개)",
+        "sam (매칭: 1개)",
+        "hrnet (매칭: 1개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "표준 state_dict 구조"
+      ],
+      "step_category": "unknown",
+      "model_type": "unknown",
+      "fixed": false
+    },
+    "backend/ai_models/step_01/inference.pth": {
+      "size_mb": 255.1458683013916,
+      "exists": true,
+      "valid": true,
+      "structure_type": "state_dict",
+      "architecture_hints": [
+        "graphonomy (매칭: 2개)",
+        "deeplabv3plus (매칭: 1개)",
+        "sam (매칭: 1개)",
+        "hrnet (매칭: 2개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "표준 state_dict 구조"
+      ],
+      "step_category": "unknown",
+      "model_type": "unknown",
+      "fixed": false
+    },
+    "backend/ai_models/step_01_human_parsing/deeplabv3plus.pth": {
+      "size_mb": 233.32293128967285,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "graphonomy (매칭: 2개)",
+        "deeplabv3plus (매칭: 2개)",
+        "sam (매칭: 1개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "step_01",
+      "model_type": "deeplabv3plus",
+      "fixed": false
+    },
+    "backend/ai_models/step_01_human_parsing/exp-schp-201908261155-lip.pth": {
+      "size_mb": 255.05957508087158,
+      "exists": true,
+      "valid": true,
+      "structure_type": "state_dict",
+      "architecture_hints": [
+        "graphonomy (매칭: 1개)",
+        "deeplabv3plus (매칭: 1개)",
+        "sam (매칭: 1개)",
+        "hrnet (매칭: 1개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "표준 state_dict 구조"
+      ],
+      "step_category": "unknown",
+      "model_type": "unknown",
+      "fixed": false
+    },
+    "backend/ai_models/step_01_human_parsing/exp-schp-201908301523-atr.pth": {
+      "size_mb": 255.05957508087158,
+      "exists": true,
+      "valid": true,
+      "structure_type": "state_dict",
+      "architecture_hints": [
+        "graphonomy (매칭: 1개)",
+        "deeplabv3plus (매칭: 1개)",
+        "sam (매칭: 1개)",
+        "hrnet (매칭: 1개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "표준 state_dict 구조"
+      ],
+      "step_category": "unknown",
+      "model_type": "unknown",
+      "fixed": false
+    },
+    "backend/ai_models/step_01_human_parsing/graphonomy.pth": {
+      "size_mb": 1172.9622974395752,
+      "exists": true,
+      "valid": false,
+      "structure_type": "unknown",
+      "architecture_hints": [],
+      "issues": [
+        "모든 로딩 방법 실패: Error while deserializing header: HeaderTooLarge"
+      ],
+      "recommendations": [],
+      "step_category": "step_01",
+      "model_type": "graphonomy",
+      "fixed": false
+    },
+    "backend/ai_models/step_01_human_parsing/graphonomy_fixed.pth": {
+      "size_mb": 255.15043830871582,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "graphonomy (매칭: 1개)",
+        "deeplabv3plus (매칭: 1개)",
+        "sam (매칭: 1개)",
+        "stable_diffusion (매칭: 1개)",
+        "hrnet (매칭: 1개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "step_01",
+      "model_type": "graphonomy",
+      "fixed": false
+    },
+    "backend/ai_models/step_01_human_parsing/graphonomy_root.pth": {
+      "size_mb": 1172.9622974395752,
+      "exists": true,
+      "valid": false,
+      "structure_type": "unknown",
+      "architecture_hints": [],
+      "issues": [
+        "모든 로딩 방법 실패: Error while deserializing header: HeaderTooLarge"
+      ],
+      "recommendations": [],
+      "step_category": "step_01",
+      "model_type": "graphonomy",
+      "fixed": false
+    },
+    "backend/ai_models/step_01_human_parsing/pytorch_model.bin": {
+      "size_mb": 104.50268268585205,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "graphonomy (매칭: 1개)",
+        "deeplabv3plus (매칭: 1개)",
+        "swinir (매칭: 2개)",
+        "vit (매칭: 2개)",
+        "densenet (매칭: 1개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "unknown",
+      "model_type": "unknown",
+      "fixed": false
+    },
+    "backend/ai_models/step_01_human_parsing/ultra_models/deeplab_resnet101.pth": {
+      "size_mb": 233.21679973602295,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "graphonomy (매칭: 2개)",
+        "deeplabv3plus (매칭: 2개)",
+        "sam (매칭: 1개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "unknown",
+      "model_type": "unknown",
+      "fixed": false
+    },
+    "backend/ai_models/step_01_human_parsing/ultra_models/fcn_resnet101_ultra.pth": {
+      "size_mb": 207.8078327178955,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "graphonomy (매칭: 2개)",
+        "deeplabv3plus (매칭: 2개)",
+        "sam (매칭: 1개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "unknown",
+      "model_type": "unknown",
+      "fixed": false
+    },
+    "backend/ai_models/step_01_human_parsing/ultra_models/pytorch_model.bin": {
+      "size_mb": 104.50268268585205,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "graphonomy (매칭: 1개)",
+        "deeplabv3plus (매칭: 1개)",
+        "swinir (매칭: 2개)",
+        "vit (매칭: 2개)",
+        "densenet (매칭: 1개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "unknown",
+      "model_type": "unknown",
+      "fixed": false
+    },
+    "backend/ai_models/step_02/body_pose_model.pth": {
+      "size_mb": 97.78054523468018,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "sam (매칭: 1개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "unknown",
+      "model_type": "unknown",
+      "fixed": false
+    },
+    "backend/ai_models/step_02/hrnet.pth": {
+      "size_mb": 243.19800567626953,
+      "exists": true,
+      "valid": true,
+      "structure_type": "state_dict",
+      "architecture_hints": [
+        "graphonomy (매칭: 1개)",
+        "u2net (매칭: 3개)",
+        "deeplabv3plus (매칭: 1개)",
+        "sam (매칭: 1개)",
+        "swinir (매칭: 1개)",
+        "hrnet (매칭: 2개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "표준 state_dict 구조"
+      ],
+      "step_category": "step_01",
+      "model_type": "hrnet",
+      "fixed": false
+    },
+    "backend/ai_models/step_02/hrnet_w48_coco_256x192.pth": {
+      "size_mb": 243.19806480407715,
+      "exists": true,
+      "valid": true,
+      "structure_type": "state_dict",
+      "architecture_hints": [
+        "graphonomy (매칭: 1개)",
+        "u2net (매칭: 3개)",
+        "deeplabv3plus (매칭: 1개)",
+        "sam (매칭: 1개)",
+        "swinir (매칭: 1개)",
+        "hrnet (매칭: 2개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "표준 state_dict 구조"
+      ],
+      "step_category": "step_01",
+      "model_type": "hrnet",
+      "fixed": false
+    },
+    "backend/ai_models/step_02/openpose.pth": {
+      "size_mb": 0.03664398193359375,
+      "exists": true,
+      "valid": true,
+      "structure_type": "model_wrapper",
+      "architecture_hints": [],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "모델 래퍼 구조"
+      ],
+      "step_category": "step_02",
+      "model_type": "openpose",
+      "fixed": false
+    },
+    "backend/ai_models/step_02_pose_estimation/body_pose_model.pth": {
+      "size_mb": 97.78054523468018,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "sam (매칭: 1개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "step_02",
+      "model_type": "unknown",
+      "fixed": false
+    },
+    "backend/ai_models/step_02_pose_estimation/diffusion_pytorch_model.bin": {
+      "size_mb": 1378.302544593811,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "sam (매칭: 1개)",
+        "swinir (매칭: 1개)",
+        "clip (매칭: 1개)",
+        "vit (매칭: 2개)",
+        "resnet (매칭: 1개)",
+        "unet (매칭: 4개)",
+        "diffusion (매칭: 4개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "unknown",
+      "model_type": "unknown",
+      "fixed": false
+    },
+    "backend/ai_models/step_02_pose_estimation/diffusion_pytorch_model.fp16.bin": {
+      "size_mb": 689.2188482284546,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "sam (매칭: 1개)",
+        "swinir (매칭: 1개)",
+        "clip (매칭: 1개)",
+        "vit (매칭: 2개)",
+        "resnet (매칭: 1개)",
+        "unet (매칭: 4개)",
+        "diffusion (매칭: 4개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "unknown",
+      "model_type": "unknown",
+      "fixed": false
+    },
+    "backend/ai_models/step_02_pose_estimation/diffusion_pytorch_model.fp16.safetensors": {
+      "size_mb": 689.1237659454346,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "sam (매칭: 1개)",
+        "swinir (매칭: 1개)",
+        "clip (매칭: 1개)",
+        "vit (매칭: 2개)",
+        "resnet (매칭: 1개)",
+        "unet (매칭: 4개)",
+        "diffusion (매칭: 4개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "SafeTensors로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "unknown",
+      "model_type": "unknown",
+      "fixed": false
+    },
+    "backend/ai_models/step_02_pose_estimation/hrnet_w32_coco_256x192.pth": {
+      "size_mb": 109.35972881317139,
+      "exists": true,
+      "valid": true,
+      "structure_type": "state_dict",
+      "architecture_hints": [
+        "graphonomy (매칭: 1개)",
+        "u2net (매칭: 3개)",
+        "deeplabv3plus (매칭: 1개)",
+        "sam (매칭: 1개)",
+        "swinir (매칭: 1개)",
+        "hrnet (매칭: 2개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "표준 state_dict 구조"
+      ],
+      "step_category": "step_01",
+      "model_type": "hrnet",
+      "fixed": false
+    },
+    "backend/ai_models/step_02_pose_estimation/hrnet_w48_coco_256x192.pth": {
+      "size_mb": 243.19806480407715,
+      "exists": true,
+      "valid": true,
+      "structure_type": "state_dict",
+      "architecture_hints": [
+        "graphonomy (매칭: 1개)",
+        "u2net (매칭: 3개)",
+        "deeplabv3plus (매칭: 1개)",
+        "sam (매칭: 1개)",
+        "swinir (매칭: 1개)",
+        "hrnet (매칭: 2개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "표준 state_dict 구조"
+      ],
+      "step_category": "step_01",
+      "model_type": "hrnet",
+      "fixed": false
+    },
+    "backend/ai_models/step_02_pose_estimation/hrnet_w48_coco_384x288.pth": {
+      "size_mb": 243.19800567626953,
+      "exists": true,
+      "valid": true,
+      "structure_type": "state_dict",
+      "architecture_hints": [
+        "graphonomy (매칭: 1개)",
+        "u2net (매칭: 3개)",
+        "deeplabv3plus (매칭: 1개)",
+        "sam (매칭: 1개)",
+        "swinir (매칭: 1개)",
+        "hrnet (매칭: 2개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "표준 state_dict 구조"
+      ],
+      "step_category": "step_01",
+      "model_type": "hrnet",
+      "fixed": false
+    },
+    "backend/ai_models/step_02_pose_estimation/ultra_models/diffusion_pytorch_model.safetensors": {
+      "size_mb": 1378.2092323303223,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "sam (매칭: 1개)",
+        "swinir (매칭: 1개)",
+        "clip (매칭: 1개)",
+        "vit (매칭: 2개)",
+        "resnet (매칭: 1개)",
+        "unet (매칭: 4개)",
+        "diffusion (매칭: 4개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "SafeTensors로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "unknown",
+      "model_type": "unknown",
+      "fixed": false
+    },
+    "backend/ai_models/step_02_pose_estimation/yolov8m-pose.pt": {
+      "size_mb": 50.79934787750244,
+      "exists": true,
+      "valid": true,
+      "structure_type": "model_wrapper",
+      "architecture_hints": [],
+      "issues": [],
+      "recommendations": [
+        "weights_only=False로 로딩됨 (보안 주의)",
+        "모델 래퍼 구조"
+      ],
+      "step_category": "step_02",
+      "model_type": "yolo",
+      "fixed": false
+    },
+    "backend/ai_models/step_03/deeplabv3.pth": {
+      "size_mb": 233.21679973602295,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "graphonomy (매칭: 2개)",
+        "deeplabv3plus (매칭: 2개)",
+        "sam (매칭: 1개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "step_03",
+      "model_type": "deeplabv3",
+      "fixed": false
+    },
+    "backend/ai_models/step_03/deeplabv3_resnet101_coco.pth": {
+      "size_mb": 233.21679973602295,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "graphonomy (매칭: 2개)",
+        "deeplabv3plus (매칭: 2개)",
+        "sam (매칭: 1개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "step_03",
+      "model_type": "deeplabv3",
+      "fixed": false
+    },
+    "backend/ai_models/step_03/mobile_sam.pth": {
+      "size_mb": 357.668288230896,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "graphonomy (매칭: 1개)",
+        "deeplabv3plus (매칭: 1개)",
+        "sam (매칭: 3개)",
+        "swinir (매칭: 3개)",
+        "clip (매칭: 1개)",
+        "vit (매칭: 5개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "step_03",
+      "model_type": "sam",
+      "fixed": false
+    },
+    "backend/ai_models/step_03/sam.pth": {
+      "size_mb": 2445.7463064193726,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "graphonomy (매칭: 1개)",
+        "deeplabv3plus (매칭: 1개)",
+        "sam (매칭: 3개)",
+        "swinir (매칭: 3개)",
+        "clip (매칭: 1개)",
+        "vit (매칭: 5개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "step_03",
+      "model_type": "sam",
+      "fixed": false
+    },
+    "backend/ai_models/step_03/sam_vit_l_0b3195.pth": {
+      "size_mb": 1191.6395254135132,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "graphonomy (매칭: 1개)",
+        "deeplabv3plus (매칭: 1개)",
+        "sam (매칭: 3개)",
+        "swinir (매칭: 3개)",
+        "clip (매칭: 1개)",
+        "vit (매칭: 5개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "step_03",
+      "model_type": "sam",
+      "fixed": false
+    },
+    "backend/ai_models/step_03/u2net.pth": {
+      "size_mb": 527.7956781387329,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "graphonomy (매칭: 1개)",
+        "deeplabv3plus (매칭: 1개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "step_01",
+      "model_type": "u2net",
+      "fixed": false
+    },
+    "backend/ai_models/step_03_cloth_segmentation/deeplabv3_resnet101_coco.pth": {
+      "size_mb": 233.21679973602295,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "graphonomy (매칭: 2개)",
+        "deeplabv3plus (매칭: 2개)",
+        "sam (매칭: 1개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "step_03",
+      "model_type": "deeplabv3",
+      "fixed": false
+    },
+    "backend/ai_models/step_03_cloth_segmentation/deeplabv3_resnet101_ultra.pth": {
+      "size_mb": 233.21679973602295,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "graphonomy (매칭: 2개)",
+        "deeplabv3plus (매칭: 2개)",
+        "sam (매칭: 1개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "step_03",
+      "model_type": "deeplabv3",
+      "fixed": false
+    },
+    "backend/ai_models/step_03_cloth_segmentation/mobile_sam.pt": {
+      "size_mb": 357.668288230896,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "graphonomy (매칭: 1개)",
+        "deeplabv3plus (매칭: 1개)",
+        "sam (매칭: 3개)",
+        "swinir (매칭: 3개)",
+        "clip (매칭: 1개)",
+        "vit (매칭: 5개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "step_03",
+      "model_type": "sam",
+      "fixed": false
+    },
+    "backend/ai_models/step_03_cloth_segmentation/mobile_sam_alternative.pt": {
+      "size_mb": 357.668288230896,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "graphonomy (매칭: 1개)",
+        "deeplabv3plus (매칭: 1개)",
+        "sam (매칭: 3개)",
+        "swinir (매칭: 3개)",
+        "clip (매칭: 1개)",
+        "vit (매칭: 5개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "step_03",
+      "model_type": "sam",
+      "fixed": false
+    },
+    "backend/ai_models/step_03_cloth_segmentation/pytorch_model 복사본.bin": {
+      "size_mb": 168.39410591125488,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "u2net (매칭: 5개)",
+        "hrnet (매칭: 1개)",
+        "unet (매칭: 1개)",
+        "diffusion (매칭: 1개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "unknown",
+      "model_type": "unknown",
+      "fixed": false
+    },
+    "backend/ai_models/step_03_cloth_segmentation/pytorch_model.bin": {
+      "size_mb": 2445.7597856521606,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "graphonomy (매칭: 1개)",
+        "deeplabv3plus (매칭: 1개)",
+        "sam (매칭: 2개)",
+        "swinir (매칭: 3개)",
+        "clip (매칭: 1개)",
+        "vit (매칭: 4개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "unknown",
+      "model_type": "unknown",
+      "fixed": false
+    },
+    "backend/ai_models/step_03_cloth_segmentation/sam_vit_h_4b8939.pth": {
+      "size_mb": 2445.7463064193726,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "graphonomy (매칭: 1개)",
+        "deeplabv3plus (매칭: 1개)",
+        "sam (매칭: 3개)",
+        "swinir (매칭: 3개)",
+        "clip (매칭: 1개)",
+        "vit (매칭: 5개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "step_03",
+      "model_type": "sam",
+      "fixed": false
+    },
+    "backend/ai_models/step_03_cloth_segmentation/sam_vit_l_0b3195.pth": {
+      "size_mb": 1191.6395254135132,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "graphonomy (매칭: 1개)",
+        "deeplabv3plus (매칭: 1개)",
+        "sam (매칭: 3개)",
+        "swinir (매칭: 3개)",
+        "clip (매칭: 1개)",
+        "vit (매칭: 5개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "step_03",
+      "model_type": "sam",
+      "fixed": false
+    },
+    "backend/ai_models/step_03_cloth_segmentation/u2net.pth": {
+      "size_mb": 527.7956781387329,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "graphonomy (매칭: 1개)",
+        "deeplabv3plus (매칭: 1개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "step_01",
+      "model_type": "u2net",
+      "fixed": false
+    },
+    "backend/ai_models/step_03_cloth_segmentation/u2net_fallback.pth": {
+      "size_mb": 527.7956781387329,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "graphonomy (매칭: 1개)",
+        "deeplabv3plus (매칭: 1개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "step_01",
+      "model_type": "u2net",
+      "fixed": false
+    },
+    "backend/ai_models/step_03_cloth_segmentation/u2net_official.pth": {
+      "size_mb": 0.0022592544555664062,
+      "exists": true,
+      "valid": false,
+      "structure_type": "unknown",
+      "architecture_hints": [],
+      "issues": [
+        "모든 로딩 방법 실패: Error while deserializing header: HeaderTooLarge"
+      ],
+      "recommendations": [],
+      "step_category": "step_01",
+      "model_type": "u2net",
+      "fixed": false
+    },
+    "backend/ai_models/step_04/gmm.pth": {
+      "size_mb": 1312.5781803131104,
+      "exists": true,
+      "valid": true,
+      "structure_type": "state_dict",
+      "architecture_hints": [
+        "graphonomy (매칭: 1개)",
+        "deeplabv3plus (매칭: 1개)",
+        "gmm (매칭: 1개)",
+        "swinir (매칭: 2개)",
+        "vit (매칭: 6개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "표준 state_dict 구조"
+      ],
+      "step_category": "step_04",
+      "model_type": "gmm",
+      "fixed": false
+    },
+    "backend/ai_models/step_04/raft.pth": {
+      "size_mb": 548.0597839355469,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "graphonomy (매칭: 1개)",
+        "deeplabv3plus (매칭: 1개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "step_04",
+      "model_type": "raft",
+      "fixed": false
+    },
+    "backend/ai_models/step_04/tps.pth": {
+      "size_mb": 548.0581169128418,
+      "exists": true,
+      "valid": true,
+      "structure_type": "state_dict",
+      "architecture_hints": [
+        "graphonomy (매칭: 1개)",
+        "deeplabv3plus (매칭: 1개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "표준 state_dict 구조"
+      ],
+      "step_category": "step_04",
+      "model_type": "tps",
+      "fixed": false
+    },
+    "backend/ai_models/step_04_geometric_matching/RealESRGAN_x4plus.pth": {
+      "size_mb": 63.935269355773926,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "real_esrgan (매칭: 1개)",
+        "openpose (매칭: 1개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "unknown",
+      "model_type": "unknown",
+      "fixed": false
+    },
+    "backend/ai_models/step_04_geometric_matching/ViT-L-14.pt": {
+      "size_mb": 577.2085866928101,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "stable_diffusion (매칭: 1개)",
+        "swinir (매칭: 3개)",
+        "clip (매칭: 2개)",
+        "vit (매칭: 3개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "step_08",
+      "model_type": "vit",
+      "fixed": false
+    },
+    "backend/ai_models/step_04_geometric_matching/diffusion_pytorch_model.bin": {
+      "size_mb": 1378.302544593811,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "sam (매칭: 1개)",
+        "swinir (매칭: 1개)",
+        "clip (매칭: 1개)",
+        "vit (매칭: 2개)",
+        "resnet (매칭: 1개)",
+        "unet (매칭: 4개)",
+        "diffusion (매칭: 4개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "unknown",
+      "model_type": "unknown",
+      "fixed": false
+    },
+    "backend/ai_models/step_04_geometric_matching/diffusion_pytorch_model.safetensors": {
+      "size_mb": 1378.2092323303223,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "sam (매칭: 1개)",
+        "swinir (매칭: 1개)",
+        "clip (매칭: 1개)",
+        "vit (매칭: 2개)",
+        "resnet (매칭: 1개)",
+        "unet (매칭: 4개)",
+        "diffusion (매칭: 4개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "SafeTensors로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "unknown",
+      "model_type": "unknown",
+      "fixed": false
+    },
+    "backend/ai_models/step_04_geometric_matching/efficientnet_b0_ultra.pth": {
+      "size_mb": 548.0597839355469,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "graphonomy (매칭: 1개)",
+        "deeplabv3plus (매칭: 1개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "unknown",
+      "model_type": "unknown",
+      "fixed": false
+    },
+    "backend/ai_models/step_04_geometric_matching/gmm_final.pth": {
+      "size_mb": 1312.5781803131104,
+      "exists": true,
+      "valid": true,
+      "structure_type": "state_dict",
+      "architecture_hints": [
+        "graphonomy (매칭: 1개)",
+        "deeplabv3plus (매칭: 1개)",
+        "gmm (매칭: 1개)",
+        "swinir (매칭: 2개)",
+        "vit (매칭: 6개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "표준 state_dict 구조"
+      ],
+      "step_category": "step_04",
+      "model_type": "gmm",
+      "fixed": false
+    },
+    "backend/ai_models/step_04_geometric_matching/models/raft-chairs.pth": {
+      "size_mb": 20.130157470703125,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "raft (매칭: 1개)",
+        "sam (매칭: 1개)",
+        "swinir (매칭: 1개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "step_04",
+      "model_type": "raft",
+      "fixed": false
+    },
+    "backend/ai_models/step_04_geometric_matching/models/raft-kitti.pth": {
+      "size_mb": 20.130157470703125,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "raft (매칭: 1개)",
+        "sam (매칭: 1개)",
+        "swinir (매칭: 1개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "step_04",
+      "model_type": "raft",
+      "fixed": false
+    },
+    "backend/ai_models/step_04_geometric_matching/models/raft-sintel.pth": {
+      "size_mb": 20.130157470703125,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "raft (매칭: 1개)",
+        "sam (매칭: 1개)",
+        "swinir (매칭: 1개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "step_04",
+      "model_type": "raft",
+      "fixed": false
+    },
+    "backend/ai_models/step_04_geometric_matching/models/raft-small.pth": {
+      "size_mb": 3.8002147674560547,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "raft (매칭: 1개)",
+        "sam (매칭: 1개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "step_04",
+      "model_type": "raft",
+      "fixed": false
+    },
+    "backend/ai_models/step_04_geometric_matching/models/raft-things.pth": {
+      "size_mb": 20.130157470703125,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "raft (매칭: 1개)",
+        "sam (매칭: 1개)",
+        "swinir (매칭: 1개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "step_04",
+      "model_type": "raft",
+      "fixed": false
+    },
+    "backend/ai_models/step_04_geometric_matching/pytorch_model.bin": {
+      "size_mb": 1161.0660848617554,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "graphonomy (매칭: 1개)",
+        "deeplabv3plus (매칭: 1개)",
+        "swinir (매칭: 2개)",
+        "vit (매칭: 2개)",
+        "densenet (매칭: 1개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "unknown",
+      "model_type": "unknown",
+      "fixed": false
+    },
+    "backend/ai_models/step_04_geometric_matching/raft-things.pth": {
+      "size_mb": 548.0597839355469,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "graphonomy (매칭: 1개)",
+        "deeplabv3plus (매칭: 1개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "step_04",
+      "model_type": "raft",
+      "fixed": false
+    },
+    "backend/ai_models/step_04_geometric_matching/resnet101_geometric.pth": {
+      "size_mb": 527.8031978607178,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "graphonomy (매칭: 1개)",
+        "deeplabv3plus (매칭: 1개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "unknown",
+      "model_type": "unknown",
+      "fixed": false
+    },
+    "backend/ai_models/step_04_geometric_matching/resnet50_geometric_ultra.pth": {
+      "size_mb": 97.79625511169434,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "sam (매칭: 1개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "unknown",
+      "model_type": "unknown",
+      "fixed": false
+    },
+    "backend/ai_models/step_04_geometric_matching/sam_vit_h_4b8939.pth": {
+      "size_mb": 2445.7463064193726,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "graphonomy (매칭: 1개)",
+        "deeplabv3plus (매칭: 1개)",
+        "sam (매칭: 3개)",
+        "swinir (매칭: 3개)",
+        "clip (매칭: 1개)",
+        "vit (매칭: 5개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "step_03",
+      "model_type": "sam",
+      "fixed": false
+    },
+    "backend/ai_models/step_04_geometric_matching/tps_network.pth": {
+      "size_mb": 548.0581169128418,
+      "exists": true,
+      "valid": true,
+      "structure_type": "state_dict",
+      "architecture_hints": [
+        "graphonomy (매칭: 1개)",
+        "deeplabv3plus (매칭: 1개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "표준 state_dict 구조"
+      ],
+      "step_category": "step_04",
+      "model_type": "tps",
+      "fixed": false
+    },
+    "backend/ai_models/step_04_geometric_matching/ultra_models/sam_vit_h_4b8939.pth": {
+      "size_mb": 357.668288230896,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "graphonomy (매칭: 1개)",
+        "deeplabv3plus (매칭: 1개)",
+        "sam (매칭: 3개)",
+        "swinir (매칭: 3개)",
+        "clip (매칭: 1개)",
+        "vit (매칭: 5개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "step_03",
+      "model_type": "sam",
+      "fixed": false
+    },
+    "backend/ai_models/step_05/dpt.pth": {
+      "size_mb": 469.9308223724365,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "graphonomy (매칭: 1개)",
+        "deeplabv3plus (매칭: 1개)",
+        "gmm (매칭: 1개)",
+        "sam (매칭: 1개)",
+        "stable_diffusion (매칭: 1개)",
+        "swinir (매칭: 2개)",
+        "vit (매칭: 6개)",
+        "hrnet (매칭: 1개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "step_05",
+      "model_type": "dpt",
+      "fixed": false
+    },
+    "backend/ai_models/step_05/tom.pth": {
+      "size_mb": 83.26171875,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "sam (매칭: 1개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "weights_only=False로 로딩됨 (보안 주의)",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "step_05",
+      "model_type": "tom",
+      "fixed": false
+    },
+    "backend/ai_models/step_05/tps_transformation.pth": {
+      "size_mb": 469.8880138397217,
+      "exists": true,
+      "valid": true,
+      "structure_type": "state_dict",
+      "architecture_hints": [
+        "graphonomy (매칭: 1개)",
+        "deeplabv3plus (매칭: 1개)",
+        "gmm (매칭: 1개)",
+        "sam (매칭: 1개)",
+        "stable_diffusion (매칭: 1개)",
+        "swinir (매칭: 2개)",
+        "vit (매칭: 6개)",
+        "hrnet (매칭: 1개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "표준 state_dict 구조"
+      ],
+      "step_category": "step_04",
+      "model_type": "tps",
+      "fixed": false
+    },
+    "backend/ai_models/step_05/vgg19_warping.pth": {
+      "size_mb": 548.0512247085571,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "graphonomy (매칭: 1개)",
+        "deeplabv3plus (매칭: 1개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "step_05",
+      "model_type": "vgg19",
+      "fixed": false
+    },
+    "backend/ai_models/step_05/viton_hd.pth": {
+      "size_mb": 1312.617956161499,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "gmm (매칭: 1개)",
+        "stable_diffusion (매칭: 1개)",
+        "swinir (매칭: 2개)",
+        "vit (매칭: 6개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "step_05",
+      "model_type": "viton_hd",
+      "fixed": false
+    },
+    "backend/ai_models/step_05_cloth_warping/RealESRGAN_x4plus.pth": {
+      "size_mb": 63.935269355773926,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "real_esrgan (매칭: 1개)",
+        "openpose (매칭: 1개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "unknown",
+      "model_type": "unknown",
+      "fixed": false
+    },
+    "backend/ai_models/step_05_cloth_warping/RealVisXL_V4.0.safetensors": {
+      "size_mb": 6616.631227493286,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "graphonomy (매칭: 1개)",
+        "deeplabv3plus (매칭: 1개)",
+        "sam (매칭: 1개)",
+        "stable_diffusion (매칭: 2개)",
+        "swinir (매칭: 2개)",
+        "clip (매칭: 2개)",
+        "vit (매칭: 3개)",
+        "hrnet (매칭: 1개)",
+        "unet (매칭: 2개)",
+        "diffusion (매칭: 2개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "SafeTensors로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "unknown",
+      "model_type": "unknown",
+      "fixed": false
+    },
+    "backend/ai_models/step_05_cloth_warping/densenet121_ultra.pth": {
+      "size_mb": 30.84464454650879,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "graphonomy (매칭: 1개)",
+        "deeplabv3plus (매칭: 1개)",
+        "swinir (매칭: 1개)",
+        "hrnet (매칭: 1개)",
+        "densenet (매칭: 1개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "step_07",
+      "model_type": "densenet",
+      "fixed": false
+    },
+    "backend/ai_models/step_05_cloth_warping/dpt_hybrid_midas.pth": {
+      "size_mb": 469.9308223724365,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "graphonomy (매칭: 1개)",
+        "deeplabv3plus (매칭: 1개)",
+        "gmm (매칭: 1개)",
+        "sam (매칭: 1개)",
+        "stable_diffusion (매칭: 1개)",
+        "swinir (매칭: 2개)",
+        "vit (매칭: 6개)",
+        "hrnet (매칭: 1개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "step_05",
+      "model_type": "dpt",
+      "fixed": false
+    },
+    "backend/ai_models/step_05_cloth_warping/gmm_final.pth": {
+      "size_mb": 0.3025331497192383,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "step_04",
+      "model_type": "gmm",
+      "fixed": false
+    },
+    "backend/ai_models/step_05_cloth_warping/safety_checker/model.fp16.safetensors": {
+      "size_mb": 579.8515701293945,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "stable_diffusion (매칭: 1개)",
+        "swinir (매칭: 3개)",
+        "clip (매칭: 1개)",
+        "vit (매칭: 3개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "SafeTensors로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "unknown",
+      "model_type": "unknown",
+      "fixed": false
+    },
+    "backend/ai_models/step_05_cloth_warping/tom_final.pth": {
+      "size_mb": 83.26171875,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "sam (매칭: 1개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "weights_only=False로 로딩됨 (보안 주의)",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "step_05",
+      "model_type": "tom",
+      "fixed": false
+    },
+    "backend/ai_models/step_05_cloth_warping/tps_network.pth": {
+      "size_mb": 1.453495979309082,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "step_04",
+      "model_type": "tps",
+      "fixed": false
+    },
+    "backend/ai_models/step_05_cloth_warping/tps_transformation.pth": {
+      "size_mb": 469.8880138397217,
+      "exists": true,
+      "valid": true,
+      "structure_type": "state_dict",
+      "architecture_hints": [
+        "graphonomy (매칭: 1개)",
+        "deeplabv3plus (매칭: 1개)",
+        "gmm (매칭: 1개)",
+        "sam (매칭: 1개)",
+        "stable_diffusion (매칭: 1개)",
+        "swinir (매칭: 2개)",
+        "vit (매칭: 6개)",
+        "hrnet (매칭: 1개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "표준 state_dict 구조"
+      ],
+      "step_category": "step_04",
+      "model_type": "tps",
+      "fixed": false
+    },
+    "backend/ai_models/step_05_cloth_warping/u2net_warping.pth": {
+      "size_mb": 38.84146308898926,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "graphonomy (매칭: 1개)",
+        "deeplabv3plus (매칭: 1개)",
+        "sam (매칭: 4개)",
+        "swinir (매칭: 3개)",
+        "clip (매칭: 1개)",
+        "vit (매칭: 4개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "step_01",
+      "model_type": "u2net",
+      "fixed": false
+    },
+    "backend/ai_models/step_05_cloth_warping/unet/diffusion_pytorch_model.bin": {
+      "size_mb": 3279.1255235671997,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "sam (매칭: 1개)",
+        "swinir (매칭: 1개)",
+        "clip (매칭: 1개)",
+        "vit (매칭: 2개)",
+        "resnet (매칭: 1개)",
+        "unet (매칭: 5개)",
+        "diffusion (매칭: 5개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "unknown",
+      "model_type": "unknown",
+      "fixed": false
+    },
+    "backend/ai_models/step_05_cloth_warping/vgg16_warping_ultra.pth": {
+      "size_mb": 527.7956781387329,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "graphonomy (매칭: 1개)",
+        "deeplabv3plus (매칭: 1개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "unknown",
+      "model_type": "unknown",
+      "fixed": false
+    },
+    "backend/ai_models/step_05_cloth_warping/vgg19_warping.pth": {
+      "size_mb": 548.0512247085571,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "graphonomy (매칭: 1개)",
+        "deeplabv3plus (매칭: 1개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "step_05",
+      "model_type": "vgg19",
+      "fixed": false
+    },
+    "backend/ai_models/step_05_cloth_warping/viton_hd_warping.pth": {
+      "size_mb": 1312.617956161499,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "gmm (매칭: 1개)",
+        "stable_diffusion (매칭: 1개)",
+        "swinir (매칭: 2개)",
+        "vit (매칭: 6개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "step_05",
+      "model_type": "viton_hd",
+      "fixed": false
+    },
+    "backend/ai_models/step_06/hrviton_final.pth": {
+      "size_mb": 230.42139339447021,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "sam (매칭: 1개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "step_06",
+      "model_type": "hrviton",
+      "fixed": false
+    },
+    "backend/ai_models/step_06/ootd_checkpoint.pth": {
+      "size_mb": 3279.0705919265747,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "sam (매칭: 1개)",
+        "swinir (매칭: 1개)",
+        "clip (매칭: 1개)",
+        "vit (매칭: 2개)",
+        "resnet (매칭: 1개)",
+        "unet (매칭: 5개)",
+        "diffusion (매칭: 5개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "step_06",
+      "model_type": "ootd",
+      "fixed": false
+    },
+    "backend/ai_models/step_06/viton_hd.pth": {
+      "size_mb": 230.42139339447021,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "sam (매칭: 1개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "step_05",
+      "model_type": "viton_hd",
+      "fixed": false
+    },
+    "backend/ai_models/step_06_virtual_fitting/diffusion_pytorch_model.bin": {
+      "size_mb": 3279.0705919265747,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "sam (매칭: 1개)",
+        "swinir (매칭: 1개)",
+        "clip (매칭: 1개)",
+        "vit (매칭: 2개)",
+        "resnet (매칭: 1개)",
+        "unet (매칭: 5개)",
+        "diffusion (매칭: 5개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "unknown",
+      "model_type": "unknown",
+      "fixed": false
+    },
+    "backend/ai_models/step_06_virtual_fitting/hrviton_final.pth": {
+      "size_mb": 230.42139339447021,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "sam (매칭: 1개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "step_06",
+      "model_type": "hrviton",
+      "fixed": false
+    },
+    "backend/ai_models/step_06_virtual_fitting/ootd_3.2gb.pth": {
+      "size_mb": 3278.9360275268555,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "sam (매칭: 1개)",
+        "swinir (매칭: 1개)",
+        "clip (매칭: 1개)",
+        "vit (매칭: 2개)",
+        "resnet (매칭: 1개)",
+        "unet (매칭: 5개)",
+        "diffusion (매칭: 5개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "SafeTensors로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "step_06",
+      "model_type": "ootd",
+      "fixed": false
+    },
+    "backend/ai_models/step_06_virtual_fitting/ootdiffusion/checkpoints/humanparsing/exp-schp-201908301523-atr.pth": {
+      "size_mb": 255.05565357208252,
+      "exists": true,
+      "valid": true,
+      "structure_type": "state_dict",
+      "architecture_hints": [
+        "graphonomy (매칭: 1개)",
+        "deeplabv3plus (매칭: 1개)",
+        "sam (매칭: 1개)",
+        "hrnet (매칭: 1개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "표준 state_dict 구조"
+      ],
+      "step_category": "step_06",
+      "model_type": "ootd",
+      "fixed": false
+    },
+    "backend/ai_models/step_06_virtual_fitting/ootdiffusion/checkpoints/ootd/ootd_dc/checkpoint-36000/unet_garm/diffusion_pytorch_model.safetensors": {
+      "size_mb": 3278.892074584961,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "sam (매칭: 1개)",
+        "swinir (매칭: 1개)",
+        "clip (매칭: 1개)",
+        "vit (매칭: 2개)",
+        "resnet (매칭: 1개)",
+        "unet (매칭: 5개)",
+        "diffusion (매칭: 5개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "SafeTensors로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "step_06",
+      "model_type": "ootd",
+      "fixed": false
+    },
+    "backend/ai_models/step_06_virtual_fitting/ootdiffusion/checkpoints/ootd/ootd_dc/checkpoint-36000/unet_vton/diffusion_pytorch_model.safetensors": {
+      "size_mb": 3278.9360275268555,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "sam (매칭: 1개)",
+        "swinir (매칭: 1개)",
+        "clip (매칭: 1개)",
+        "vit (매칭: 2개)",
+        "resnet (매칭: 1개)",
+        "unet (매칭: 5개)",
+        "diffusion (매칭: 5개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "SafeTensors로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "step_06",
+      "model_type": "ootd",
+      "fixed": false
+    },
+    "backend/ai_models/step_06_virtual_fitting/ootdiffusion/checkpoints/ootd/ootd_hd/checkpoint-36000/unet_garm/diffusion_pytorch_model.safetensors": {
+      "size_mb": 3278.892074584961,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "sam (매칭: 1개)",
+        "swinir (매칭: 1개)",
+        "clip (매칭: 1개)",
+        "vit (매칭: 2개)",
+        "resnet (매칭: 1개)",
+        "unet (매칭: 5개)",
+        "diffusion (매칭: 5개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "SafeTensors로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "step_06",
+      "model_type": "ootd",
+      "fixed": false
+    },
+    "backend/ai_models/step_06_virtual_fitting/ootdiffusion/checkpoints/ootd/ootd_hd/checkpoint-36000/unet_vton/diffusion_pytorch_model.safetensors": {
+      "size_mb": 3278.9360275268555,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "sam (매칭: 1개)",
+        "swinir (매칭: 1개)",
+        "clip (매칭: 1개)",
+        "vit (매칭: 2개)",
+        "resnet (매칭: 1개)",
+        "unet (매칭: 5개)",
+        "diffusion (매칭: 5개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "SafeTensors로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "step_06",
+      "model_type": "ootd",
+      "fixed": false
+    },
+    "backend/ai_models/step_06_virtual_fitting/ootdiffusion/checkpoints/ootd/text_encoder/pytorch_model.bin": {
+      "size_mb": 469.4989538192749,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "stable_diffusion (매칭: 1개)",
+        "swinir (매칭: 2개)",
+        "vit (매칭: 2개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "step_06",
+      "model_type": "ootd",
+      "fixed": false
+    },
+    "backend/ai_models/step_06_virtual_fitting/ootdiffusion/checkpoints/ootd/vae/diffusion_pytorch_model.bin": {
+      "size_mb": 319.2063455581665,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "graphonomy (매칭: 1개)",
+        "deeplabv3plus (매칭: 1개)",
+        "sam (매칭: 1개)",
+        "swinir (매칭: 1개)",
+        "vit (매칭: 1개)",
+        "resnet (매칭: 1개)",
+        "unet (매칭: 4개)",
+        "diffusion (매칭: 4개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "step_06",
+      "model_type": "ootd",
+      "fixed": false
+    },
+    "backend/ai_models/step_06_virtual_fitting/ootdiffusion/checkpoints/openpose/ckpts/body_pose_model.pth": {
+      "size_mb": 199.57313060760498,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "u2net (매칭: 3개)",
+        "hrnet (매칭: 1개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "step_02",
+      "model_type": "openpose",
+      "fixed": false
+    },
+    "backend/ai_models/step_06_virtual_fitting/ootdiffusion/diffusion_pytorch_model.bin": {
+      "size_mb": 3279.0705919265747,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "sam (매칭: 1개)",
+        "swinir (매칭: 1개)",
+        "clip (매칭: 1개)",
+        "vit (매칭: 2개)",
+        "resnet (매칭: 1개)",
+        "unet (매칭: 5개)",
+        "diffusion (매칭: 5개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "step_06",
+      "model_type": "ootd",
+      "fixed": false
+    },
+    "backend/ai_models/step_06_virtual_fitting/ootdiffusion/text_encoder/ootdiffusion/text_encoder/text_encoder_pytorch_model.bin": {
+      "size_mb": 492.3999996185303,
+      "exists": true,
+      "valid": false,
+      "structure_type": "unknown",
+      "architecture_hints": [],
+      "issues": [
+        "모든 로딩 방법 실패: Error while deserializing header: InvalidHeaderDeserialization"
+      ],
+      "recommendations": [],
+      "step_category": "step_06",
+      "model_type": "ootd",
+      "fixed": false
+    },
+    "backend/ai_models/step_06_virtual_fitting/ootdiffusion/unet/ootdiffusion/unet/diffusion_pytorch_model.safetensors": {
+      "size_mb": 3303.2670001983643,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "sam (매칭: 1개)",
+        "swinir (매칭: 1개)",
+        "clip (매칭: 1개)",
+        "vit (매칭: 2개)",
+        "resnet (매칭: 1개)",
+        "unet (매칭: 5개)",
+        "diffusion (매칭: 5개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "SafeTensors로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "step_06",
+      "model_type": "ootd",
+      "fixed": false
+    },
+    "backend/ai_models/step_06_virtual_fitting/ootdiffusion/vae/ootdiffusion/vae/vae_diffusion_pytorch_model.bin": {
+      "size_mb": 334.5999994277954,
+      "exists": true,
+      "valid": false,
+      "structure_type": "unknown",
+      "architecture_hints": [],
+      "issues": [
+        "모든 로딩 방법 실패: Error while deserializing header: InvalidHeaderDeserialization"
+      ],
+      "recommendations": [],
+      "step_category": "step_06",
+      "model_type": "ootd",
+      "fixed": false
+    },
+    "backend/ai_models/step_06_virtual_fitting/pytorch_model.bin": {
+      "size_mb": 3279.0705919265747,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "sam (매칭: 1개)",
+        "swinir (매칭: 1개)",
+        "clip (매칭: 1개)",
+        "vit (매칭: 2개)",
+        "resnet (매칭: 1개)",
+        "unet (매칭: 5개)",
+        "diffusion (매칭: 5개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "unknown",
+      "model_type": "unknown",
+      "fixed": false
+    },
+    "backend/ai_models/step_06_virtual_fitting/stable_diffusion_4.8gb.pth": {
+      "size_mb": 3278.892078399658,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "sam (매칭: 1개)",
+        "swinir (매칭: 1개)",
+        "clip (매칭: 1개)",
+        "vit (매칭: 2개)",
+        "resnet (매칭: 1개)",
+        "unet (매칭: 5개)",
+        "diffusion (매칭: 5개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "SafeTensors로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "step_06",
+      "model_type": "stable_diffusion",
+      "fixed": false
+    },
+    "backend/ai_models/step_06_virtual_fitting/ultra_models/ootd_3.2gb.pth": {
+      "size_mb": 3278.9360275268555,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "sam (매칭: 1개)",
+        "swinir (매칭: 1개)",
+        "clip (매칭: 1개)",
+        "vit (매칭: 2개)",
+        "resnet (매칭: 1개)",
+        "unet (매칭: 5개)",
+        "diffusion (매칭: 5개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "SafeTensors로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "step_06",
+      "model_type": "ootd",
+      "fixed": false
+    },
+    "backend/ai_models/step_06_virtual_fitting/ultra_models/stable_diffusion_4.8gb.pth": {
+      "size_mb": 3278.892078399658,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "sam (매칭: 1개)",
+        "swinir (매칭: 1개)",
+        "clip (매칭: 1개)",
+        "vit (매칭: 2개)",
+        "resnet (매칭: 1개)",
+        "unet (매칭: 5개)",
+        "diffusion (매칭: 5개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "SafeTensors로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "step_06",
+      "model_type": "stable_diffusion",
+      "fixed": false
+    },
+    "backend/ai_models/step_06_virtual_fitting/ultra_models/viton_hd_2.1gb.pth": {
+      "size_mb": 230.42139339447021,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "sam (매칭: 1개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "step_05",
+      "model_type": "viton_hd",
+      "fixed": false
+    },
+    "backend/ai_models/step_06_virtual_fitting/unet/diffusion_pytorch_model.safetensors": {
+      "size_mb": 3303.2670001983643,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "sam (매칭: 1개)",
+        "swinir (매칭: 1개)",
+        "clip (매칭: 1개)",
+        "vit (매칭: 2개)",
+        "resnet (매칭: 1개)",
+        "unet (매칭: 5개)",
+        "diffusion (매칭: 5개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "SafeTensors로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "unknown",
+      "model_type": "unknown",
+      "fixed": false
+    },
+    "backend/ai_models/step_06_virtual_fitting/validated_checkpoints/ootd_checkpoint.pth": {
+      "size_mb": 3279.0705919265747,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "sam (매칭: 1개)",
+        "swinir (매칭: 1개)",
+        "clip (매칭: 1개)",
+        "vit (매칭: 2개)",
+        "resnet (매칭: 1개)",
+        "unet (매칭: 5개)",
+        "diffusion (매칭: 5개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "step_06",
+      "model_type": "ootd",
+      "fixed": false
+    },
+    "backend/ai_models/step_06_virtual_fitting/viton_hd_2.1gb.pth": {
+      "size_mb": 230.42139339447021,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "sam (매칭: 1개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "step_05",
+      "model_type": "viton_hd",
+      "fixed": false
+    },
+    "backend/ai_models/step_07/ESRGAN_x8.pth": {
+      "size_mb": 4.658804893493652,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "real_esrgan (매칭: 1개)",
+        "openpose (매칭: 1개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "unknown",
+      "model_type": "unknown",
+      "fixed": false
+    },
+    "backend/ai_models/step_07/RealESRGAN_x2plus.pth": {
+      "size_mb": 63.955044746398926,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "real_esrgan (매칭: 1개)",
+        "openpose (매칭: 1개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "unknown",
+      "model_type": "unknown",
+      "fixed": false
+    },
+    "backend/ai_models/step_07/densenet161_enhance.pth": {
+      "size_mb": 110.36948204040527,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "graphonomy (매칭: 1개)",
+        "deeplabv3plus (매칭: 1개)",
+        "swinir (매칭: 1개)",
+        "hrnet (매칭: 1개)",
+        "densenet (매칭: 1개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "step_07",
+      "model_type": "densenet",
+      "fixed": false
+    },
+    "backend/ai_models/step_07/gfpgan.pth": {
+      "size_mb": 332.4822177886963,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "graphonomy (매칭: 1개)",
+        "deeplabv3plus (매칭: 1개)",
+        "real_esrgan (매칭: 1개)",
+        "vit (매칭: 1개)",
+        "openpose (매칭: 1개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "step_07",
+      "model_type": "gfpgan",
+      "fixed": false
+    },
+    "backend/ai_models/step_07/real_esrgan.pth": {
+      "size_mb": 63.935269355773926,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "real_esrgan (매칭: 1개)",
+        "openpose (매칭: 1개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "step_07",
+      "model_type": "real_esrgan",
+      "fixed": false
+    },
+    "backend/ai_models/step_07/swinir.pth": {
+      "size_mb": 135.87373638153076,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "sam (매칭: 1개)",
+        "real_esrgan (매칭: 1개)",
+        "swinir (매칭: 3개)",
+        "vit (매칭: 4개)",
+        "openpose (매칭: 1개)",
+        "resnet (매칭: 1개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "step_07",
+      "model_type": "swinir",
+      "fixed": false
+    },
+    "backend/ai_models/step_07_post_processing/001_classicalSR_DIV2K_s48w8_SwinIR-M_x4.pth": {
+      "size_mb": 56.849955558776855,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "sam (매칭: 1개)",
+        "real_esrgan (매칭: 1개)",
+        "swinir (매칭: 3개)",
+        "vit (매칭: 4개)",
+        "openpose (매칭: 1개)",
+        "resnet (매칭: 1개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "step_07",
+      "model_type": "swinir",
+      "fixed": false
+    },
+    "backend/ai_models/step_07_post_processing/ESRGAN_x8.pth": {
+      "size_mb": 4.658804893493652,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "real_esrgan (매칭: 1개)",
+        "openpose (매칭: 1개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "unknown",
+      "model_type": "unknown",
+      "fixed": false
+    },
+    "backend/ai_models/step_07_post_processing/GFPGAN.pth": {
+      "size_mb": 332.4822177886963,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "graphonomy (매칭: 1개)",
+        "deeplabv3plus (매칭: 1개)",
+        "real_esrgan (매칭: 1개)",
+        "vit (매칭: 1개)",
+        "openpose (매칭: 1개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "step_07",
+      "model_type": "gfpgan",
+      "fixed": false
+    },
+    "backend/ai_models/step_07_post_processing/RealESRGAN_x2plus.pth": {
+      "size_mb": 63.955044746398926,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "real_esrgan (매칭: 1개)",
+        "openpose (매칭: 1개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "unknown",
+      "model_type": "unknown",
+      "fixed": false
+    },
+    "backend/ai_models/step_07_post_processing/RealESRGAN_x4plus.pth": {
+      "size_mb": 63.935269355773926,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "real_esrgan (매칭: 1개)",
+        "openpose (매칭: 1개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "step_07",
+      "model_type": "unknown",
+      "fixed": false
+    },
+    "backend/ai_models/step_07_post_processing/densenet161_enhance.pth": {
+      "size_mb": 110.36948204040527,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "graphonomy (매칭: 1개)",
+        "deeplabv3plus (매칭: 1개)",
+        "swinir (매칭: 1개)",
+        "hrnet (매칭: 1개)",
+        "densenet (매칭: 1개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "step_07",
+      "model_type": "densenet",
+      "fixed": false
+    },
+    "backend/ai_models/step_07_post_processing/esrgan_x8_ultra/ESRGAN_x8.pth": {
+      "size_mb": 135.87373638153076,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "sam (매칭: 1개)",
+        "real_esrgan (매칭: 1개)",
+        "swinir (매칭: 3개)",
+        "vit (매칭: 4개)",
+        "openpose (매칭: 1개)",
+        "resnet (매칭: 1개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "unknown",
+      "model_type": "unknown",
+      "fixed": false
+    },
+    "backend/ai_models/step_07_post_processing/mobilenet_v3_ultra.pth": {
+      "size_mb": 21.11079978942871,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "graphonomy (매칭: 1개)",
+        "deeplabv3plus (매칭: 1개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "unknown",
+      "model_type": "unknown",
+      "fixed": false
+    },
+    "backend/ai_models/step_07_post_processing/pytorch_model.bin": {
+      "size_mb": 822.9781694412231,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "clip (매칭: 1개)",
+        "vit (매칭: 2개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "unknown",
+      "model_type": "unknown",
+      "fixed": false
+    },
+    "backend/ai_models/step_07_post_processing/resnet101_enhance_ultra.pth": {
+      "size_mb": 170.5408763885498,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "sam (매칭: 1개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "unknown",
+      "model_type": "unknown",
+      "fixed": false
+    },
+    "backend/ai_models/step_07_post_processing/swinir_real_sr_x4_large.pth": {
+      "size_mb": 135.87373638153076,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "sam (매칭: 1개)",
+        "real_esrgan (매칭: 1개)",
+        "swinir (매칭: 3개)",
+        "vit (매칭: 4개)",
+        "openpose (매칭: 1개)",
+        "resnet (매칭: 1개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "step_07",
+      "model_type": "swinir",
+      "fixed": false
+    },
+    "backend/ai_models/step_07_post_processing/ultra_models/pytorch_model.bin": {
+      "size_mb": 822.9781694412231,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "clip (매칭: 1개)",
+        "vit (매칭: 2개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "unknown",
+      "model_type": "unknown",
+      "fixed": false
+    },
+    "backend/ai_models/step_08/ViT-B-32.pth": {
+      "size_mb": 337.5783176422119,
+      "exists": true,
+      "valid": true,
+      "structure_type": "torchscript",
+      "architecture_hints": [
+        "clip (매칭: 3개)",
+        "vit (매칭: 3개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "weights_only=False로 로딩됨 (보안 주의)",
+        "TorchScript 모델"
+      ],
+      "step_category": "step_08",
+      "model_type": "vit",
+      "fixed": false
+    },
+    "backend/ai_models/step_08/ViT-L-14.pth": {
+      "size_mb": 889.5570125579834,
+      "exists": true,
+      "valid": true,
+      "structure_type": "torchscript",
+      "architecture_hints": [
+        "clip (매칭: 3개)",
+        "vit (매칭: 3개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "weights_only=False로 로딩됨 (보안 주의)",
+        "TorchScript 모델"
+      ],
+      "step_category": "step_08",
+      "model_type": "vit",
+      "fixed": false
+    },
+    "backend/ai_models/step_08/alex.pth": {
+      "size_mb": 0.006951332092285156,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "stable_diffusion (매칭: 1개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "step_08",
+      "model_type": "alex",
+      "fixed": false
+    },
+    "backend/ai_models/step_08/clip.pth": {
+      "size_mb": 577.2085866928101,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "stable_diffusion (매칭: 1개)",
+        "swinir (매칭: 3개)",
+        "clip (매칭: 2개)",
+        "vit (매칭: 3개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "step_08",
+      "model_type": "clip",
+      "fixed": false
+    },
+    "backend/ai_models/step_08/lpips.pth": {
+      "size_mb": 233.08690357208252,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "graphonomy (매칭: 1개)",
+        "deeplabv3plus (매칭: 1개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "step_08",
+      "model_type": "lpips",
+      "fixed": false
+    },
+    "backend/ai_models/step_08/open_clip_pytorch_model.pth": {
+      "size_mb": 1631.3851976394653,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "clip (매칭: 3개)",
+        "vit (매칭: 3개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "step_08",
+      "model_type": "clip",
+      "fixed": false
+    },
+    "backend/ai_models/step_08_quality_assessment/ViT-B-32.pt": {
+      "size_mb": 337.5783176422119,
+      "exists": true,
+      "valid": true,
+      "structure_type": "torchscript",
+      "architecture_hints": [
+        "clip (매칭: 3개)",
+        "vit (매칭: 3개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "weights_only=False로 로딩됨 (보안 주의)",
+        "TorchScript 모델"
+      ],
+      "step_category": "step_08",
+      "model_type": "vit",
+      "fixed": false
+    },
+    "backend/ai_models/step_08_quality_assessment/ViT-L-14.pt": {
+      "size_mb": 889.5570125579834,
+      "exists": true,
+      "valid": true,
+      "structure_type": "torchscript",
+      "architecture_hints": [
+        "clip (매칭: 3개)",
+        "vit (매칭: 3개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "weights_only=False로 로딩됨 (보안 주의)",
+        "TorchScript 모델"
+      ],
+      "step_category": "step_08",
+      "model_type": "vit",
+      "fixed": false
+    },
+    "backend/ai_models/step_08_quality_assessment/alex.pth": {
+      "size_mb": 0.006951332092285156,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "stable_diffusion (매칭: 1개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "step_08",
+      "model_type": "alex",
+      "fixed": false
+    },
+    "backend/ai_models/step_08_quality_assessment/clip_vit_b32.pth": {
+      "size_mb": 577.2085866928101,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "stable_diffusion (매칭: 1개)",
+        "swinir (매칭: 3개)",
+        "clip (매칭: 2개)",
+        "vit (매칭: 3개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "step_08",
+      "model_type": "clip",
+      "fixed": false
+    },
+    "backend/ai_models/step_08_quality_assessment/clip_vit_g14/open_clip_pytorch_model.bin": {
+      "size_mb": 5213.743920326233,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "clip (매칭: 3개)",
+        "vit (매칭: 3개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "step_08",
+      "model_type": "clip",
+      "fixed": false
+    },
+    "backend/ai_models/step_08_quality_assessment/lpips_alex.pth": {
+      "size_mb": 233.08690357208252,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "graphonomy (매칭: 1개)",
+        "deeplabv3plus (매칭: 1개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "step_08",
+      "model_type": "lpips",
+      "fixed": false
+    },
+    "backend/ai_models/step_08_quality_assessment/open_clip_pytorch_model.bin": {
+      "size_mb": 1631.3851976394653,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "clip (매칭: 3개)",
+        "vit (매칭: 3개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "step_08",
+      "model_type": "clip",
+      "fixed": false
+    },
+    "backend/ai_models/step_08_quality_assessment/pytorch_model.bin": {
+      "size_mb": 577.2085866928101,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "stable_diffusion (매칭: 1개)",
+        "swinir (매칭: 3개)",
+        "clip (매칭: 2개)",
+        "vit (매칭: 3개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "unknown",
+      "model_type": "unknown",
+      "fixed": false
+    },
+    "backend/ai_models/step_08_quality_assessment/ultra_models/pytorch_model.bin": {
+      "size_mb": 1631.4235677719116,
+      "exists": true,
+      "valid": true,
+      "structure_type": "custom_dict",
+      "architecture_hints": [
+        "stable_diffusion (매칭: 1개)",
+        "swinir (매칭: 3개)",
+        "clip (매칭: 2개)",
+        "vit (매칭: 3개)"
+      ],
+      "issues": [],
+      "recommendations": [
+        "안전한 weights_only=True로 로딩됨",
+        "커스텀 구조에서 파라미터 발견"
+      ],
+      "step_category": "unknown",
+      "model_type": "unknown",
+      "fixed": false
+    },
+    "backend/yolov8n-pose.pt": {
+      "size_mb": 6.512632369995117,
+      "exists": true,
+      "valid": true,
+      "structure_type": "model_wrapper",
+      "architecture_hints": [],
+      "issues": [],
+      "recommendations": [
+        "weights_only=False로 로딩됨 (보안 주의)",
+        "모델 래퍼 구조"
+      ],
+      "step_category": "step_02",
+      "model_type": "yolo",
+      "fixed": false
+    }
+  }
+}

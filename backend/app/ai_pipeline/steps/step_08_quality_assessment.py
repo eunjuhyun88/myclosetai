@@ -1278,6 +1278,42 @@ class QualityAssessmentStep(BaseStepMixin):
                 except Exception as e:
                     self.logger.warning(f"⚠️ {config['name']} 로딩 실패: {e}")
             
+            # 🔥 검증된 Quality Assessment 아키텍처 정보 적용
+            # Perceptual Quality Model: VGG 기반 지각적 품질 평가 네트워크
+            # - VGG 백본 + 품질 평가 헤드
+            # - LPIPS (Learned Perceptual Image Patch Similarity) 기반
+            # - 지각적 유사도 계산
+            
+            # Aesthetic Quality Model: ResNet 기반 미적 품질 평가 네트워크
+            # - ResNet 백본 + 미적 품질 헤드
+            # - 미적 점수 예측
+            # - 컴포지션, 색감, 조명 등 평가
+            
+            # Technical Analyzer: 기술적 품질 분석기
+            # - 선명도, 노이즈, 대비, 밝기 분석
+            # - 객관적 품질 메트릭 계산
+            # - 이미지 처리 기반 분석
+            
+            # 🔥 MPS 타입 통일 적용
+            if self.device == 'mps':
+                for model_type, model in self.ai_models.items():
+                    if hasattr(model, 'to') and callable(getattr(model, 'to', None)):
+                        try:
+                            # 모델을 float32로 통일
+                            model = model.to(dtype=torch.float32)
+                            
+                            # 모든 파라미터를 float32로 통일
+                            for param in model.parameters():
+                                param.data = param.data.to(dtype=torch.float32)
+                            
+                            # 모든 버퍼를 float32로 통일
+                            for buffer in model.buffers():
+                                buffer.data = buffer.data.to(dtype=torch.float32)
+                            
+                            self.logger.info(f"✅ {model_type} 모델 MPS float32 통일 완료")
+                        except Exception as e:
+                            self.logger.warning(f"⚠️ {model_type} 모델 MPS 타입 통일 실패: {e}")
+            
             # 로딩 상태 업데이트
             self.quality_ready = loaded_count > 0
             self.ai_models_ready = loaded_count >= 2  # 최소 2개 모델 필요

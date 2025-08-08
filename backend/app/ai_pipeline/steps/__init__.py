@@ -398,13 +398,23 @@ def load_base_step_mixin_safe() -> Optional[Type]:
     
     # 3. 직접 파일 로딩 시도 (최후의 수단)
     try:
-        spec = importlib.util.spec_from_file_location("base_step_mixin", existing_path)
-        if spec and spec.loader:
-            module = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(module)
+        # Python 버전 호환성을 위한 안전한 importlib.util 사용
+        if hasattr(importlib, 'util'):
+            spec = importlib.util.spec_from_file_location("base_step_mixin", existing_path)
+            if spec and spec.loader:
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+                BSM = getattr(module, 'BaseStepMixin', None)
+                if BSM:
+                    logger.info(f"✅ BaseStepMixin 직접 로딩 성공: {existing_path}")
+                    return BSM
+        else:
+            # Python 3.4 이전 버전을 위한 대안
+            import imp
+            module = imp.load_source("base_step_mixin", str(existing_path))
             BSM = getattr(module, 'BaseStepMixin', None)
             if BSM:
-                logger.info(f"✅ BaseStepMixin 직접 로딩 성공: {existing_path}")
+                logger.info(f"✅ BaseStepMixin 직접 로딩 성공 (legacy): {existing_path}")
                 return BSM
     except Exception as e:
         logger.warning(f"⚠️ BaseStepMixin 직접 로딩 실패: {e}")
@@ -547,22 +557,39 @@ def safe_import_step_class(step_module_name: str, step_class_name: str) -> Optio
     
     # 4. 직접 파일 로딩 시도 (threading 및 logger 미리 주입)
     try:
-        spec = importlib.util.spec_from_file_location(step_module_name, existing_file)
-        if spec and spec.loader:
-            module = importlib.util.module_from_spec(spec)
+        # Python 버전 호환성을 위한 안전한 importlib.util 사용
+        if hasattr(importlib, 'util'):
+            spec = importlib.util.spec_from_file_location(step_module_name, existing_file)
+            if spec and spec.loader:
+                module = importlib.util.module_from_spec(spec)
+                
+                # 필수 모듈들을 미리 주입하여 import 오류 방지
+                setattr(module, 'threading', threading)
+                setattr(module, 'logging', logging)
+                
+                # logger도 미리 주입 (ClothSegmentationStep 오류 해결)
+                module_logger = logging.getLogger(step_module_name)
+                setattr(module, 'logger', module_logger)
+                
+                spec.loader.exec_module(module)
+                step_class = getattr(module, step_class_name, None)
+                if step_class:
+                    logger.info(f"✅ {step_class_name} 직접 로딩 성공: {existing_file}")
+                    return step_class
+        else:
+            # Python 3.4 이전 버전을 위한 대안
+            import imp
+            module = imp.load_source(step_module_name, str(existing_file))
             
-            # 필수 모듈들을 미리 주입하여 import 오류 방지
+            # 필수 모듈들을 미리 주입
             setattr(module, 'threading', threading)
             setattr(module, 'logging', logging)
-            
-            # logger도 미리 주입 (ClothSegmentationStep 오류 해결)
             module_logger = logging.getLogger(step_module_name)
             setattr(module, 'logger', module_logger)
             
-            spec.loader.exec_module(module)
             step_class = getattr(module, step_class_name, None)
             if step_class:
-                logger.info(f"✅ {step_class_name} 직접 로딩 성공: {existing_file}")
+                logger.info(f"✅ {step_class_name} 직접 로딩 성공 (legacy): {existing_file}")
                 return step_class
     except Exception as e:
         logger.warning(f"⚠️ {step_class_name} 직접 로딩 실패: {e}")

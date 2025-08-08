@@ -57,7 +57,43 @@ from collections import defaultdict, deque
 from itertools import chain
 
 # ==============================================
-# 🔥 2단계: Human Parsing 모듈 imports (순환참조 방지를 위해 제거)
+# 🔥 2단계: AI Pipeline 유틸리티 imports
+# ==============================================
+
+# Model Loader System
+try:
+    from app.ai_pipeline.utils.auto_model_detector import AutoModelDetector as auto_model_detector
+except ImportError:
+    auto_model_detector = None
+
+try:
+    from app.ai_pipeline.utils.dynamic_model_detector import DynamicModelDetector as dynamic_model_detector
+except ImportError:
+    dynamic_model_detector = None
+
+try:
+    from app.ai_pipeline.utils.smart_model_mapper import SmartModelMapper as smart_model_mapper
+except ImportError:
+    smart_model_mapper = None
+
+# Memory Management System
+try:
+    from app.ai_pipeline.utils.memory_manager import MemoryManager as memory_manager
+except ImportError:
+    memory_manager = None
+
+try:
+    from app.ai_pipeline.utils.memory_monitor import MemoryMonitor as memory_monitor
+except ImportError:
+    memory_monitor = None
+
+try:
+    from app.ai_pipeline.utils.performance_optimizer import PerformanceOptimizer as performance_optimizer
+except ImportError:
+    performance_optimizer = None
+
+# ==============================================
+# 🔥 3단계: Human Parsing 모듈 imports (순환참조 방지를 위해 제거)
 # ==============================================
 
 # Human Parsing 모듈들은 각 Step 파일에서 직접 import하도록 변경

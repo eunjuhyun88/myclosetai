@@ -1,0 +1,15 @@
+🔥 고급 AI 모델 수정 리포트
+================================================================================
+📅 수정 시간: 2025-08-08 03:46:56
+
+📊 수정 결과:
+   ✅ 성공: 0개
+   ❌ 실패: 6개
+
+❌ 수정 실패한 모델들:
+   - training_args.bin
+   - graphonomy.pth
+   - graphonomy_root.pth
+   - u2net_official.pth
+   - text_encoder_pytorch_model.bin
+   - vae_diffusion_pytorch_model.bin
