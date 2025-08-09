@@ -1226,10 +1226,8 @@ class CentralHubDIContainer:
             # 🔥 3단계: ModelLoader 인스턴스 생성
             try:
                 model_loader = ModelLoader(
-                    device=DEVICE,
-                    enable_optimization=True,
-                    # 🔥 중요: _initialize_central_hub_integration을 비활성화
-                    _skip_central_hub_init=True  # 새로운 플래그
+                    device=DEVICE
+                    # enable_optimization 파라미터 제거 - ModelLoader에서 지원하지 않음
                 )
                 
                 stage_status['instance_creation'] = 'success'
@@ -1294,8 +1292,16 @@ class CentralHubDIContainer:
                 if not hasattr(model_loader, 'device'):
                     raise RuntimeError("ModelLoader에 device 속성이 없습니다")
                 
-                if not hasattr(model_loader, 'load_model'):
-                    raise RuntimeError("ModelLoader에 load_model 메서드가 없습니다")
+                # ModelLoader v6.0의 실제 메서드들 확인
+                required_methods = ['load_model_for_step', 'create_step_interface', 'validate_di_container_integration']
+                missing_methods = []
+                
+                for method in required_methods:
+                    if not hasattr(model_loader, method):
+                        missing_methods.append(method)
+                
+                if missing_methods:
+                    raise RuntimeError(f"ModelLoader에 필요한 메서드가 없습니다: {missing_methods}")
                 
                 stage_status['initialization_validation'] = 'success'
                 self.logger.debug("✅ 6단계: ModelLoader 초기화 검증 성공")
@@ -1500,6 +1506,7 @@ class CentralHubDIContainer:
                 self.is_minimal = True
                 self.device = DEVICE
                 self.loaded_models = {}
+                self.logger = logging.getLogger("MinimalModelLoader")
                 
             def load_model(self, model_name: str, **kwargs):
                 self.logger.debug(f"⚠️ Minimal ModelLoader.load_model: {model_name}")

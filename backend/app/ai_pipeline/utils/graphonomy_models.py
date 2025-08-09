@@ -150,6 +150,9 @@ class ResNet101Backbone(nn.Module):
     def __init__(self):
         super().__init__()
         
+        # inplanes 초기화 (누락된 부분)
+        self.inplanes = 64
+        
         # Initial layers
         self.conv1 = nn.Conv2d(3, 64, kernel_size=7, stride=2, padding=3, bias=False)
         self.bn1 = nn.BatchNorm2d(64)

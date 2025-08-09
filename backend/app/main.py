@@ -472,6 +472,41 @@ async def _register_core_services_to_central_hub(container):
     try:
         print_status("🔄 핵심 서비스들 Central Hub 등록 중...")
         
+        # 🔥 ModelLoader 등록 (새로 추가)
+        try:
+            print_status("🔄 ModelLoader 등록 시작...")
+            from app.ai_pipeline.utils.model_loader import (
+                get_global_model_loader, 
+                initialize_global_model_loader,
+                get_model_loader_v6
+            )
+            
+            # ModelLoader 초기화
+            success = initialize_global_model_loader()
+            if not success:
+                print_warning("⚠️ ModelLoader 초기화 실패 - v6 로더 시도")
+                model_loader = get_model_loader_v6(device="auto")
+            else:
+                model_loader = get_global_model_loader()
+            
+            if model_loader:
+                container.register('model_loader', model_loader)
+                print_status("✅ ModelLoader Central Hub 등록 완료")
+                
+                # ModelLoader 통계 확인
+                if hasattr(model_loader, 'list_available_models'):
+                    available_models = model_loader.list_available_models()
+                    print_status(f"   - 사용 가능한 모델: {len(available_models)}개")
+                
+                if hasattr(model_loader, 'device'):
+                    print_status(f"   - 디바이스: {model_loader.device}")
+            else:
+                print_error("❌ ModelLoader 생성 실패")
+                
+        except Exception as e:
+            print_error(f"❌ ModelLoader 등록 실패: {e}")
+            print_error(f"❌ 상세 오류: {traceback.format_exc()}")
+        
         # StepServiceManager 등록
         try:
             from app.services.step_service import (

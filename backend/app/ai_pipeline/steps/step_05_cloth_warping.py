@@ -4229,7 +4229,7 @@ class ClothWarpingStep(BaseStepMixin):
                     self.logger.info("🔥 ModelLoader를 통한 TPS 모델 로딩 시작")
                     
                     # ModelLoader의 load_model 메서드 사용
-                    tps_real_model = self.model_loader.load_model("tps_transformation")
+                    tps_real_model = self.model_loader.load_model_for_step("cloth_warping", "tps_transformation")
                     
                     if tps_real_model is not None:
                         # RealAIModel에서 실제 PyTorch 모델 가져오기
@@ -4270,7 +4270,7 @@ class ClothWarpingStep(BaseStepMixin):
                     self.logger.info("🔥 ModelLoader를 통한 VITON-HD 모델 로딩 시작")
                     
                     # ModelLoader의 load_model 메서드 사용
-                    viton_real_model = self.model_loader.load_model("viton_hd_warping")
+                    viton_real_model = self.model_loader.load_model_for_step("cloth_warping", "viton_hd_warping")
                     
                     if viton_real_model is not None:
                         # RealAIModel에서 실제 PyTorch 모델 가져오기
@@ -4311,7 +4311,7 @@ class ClothWarpingStep(BaseStepMixin):
                     self.logger.info("🔥 ModelLoader를 통한 DPT 모델 로딩 시작")
                     
                     # ModelLoader의 load_model 메서드 사용
-                    dpt_real_model = self.model_loader.load_model("dpt_hybrid_midas")
+                    dpt_real_model = self.model_loader.load_model_for_step("cloth_warping", "dpt_hybrid_midas")
                     
                     if dpt_real_model is not None:
                         # RealAIModel에서 실제 PyTorch 모델 가져오기
@@ -4348,7 +4348,7 @@ class ClothWarpingStep(BaseStepMixin):
                     self.logger.info("🔥 ModelLoader를 통한 VGG19 모델 로딩 시작")
                     
                     # ModelLoader의 load_model 메서드 사용
-                    vgg_real_model = self.model_loader.load_model("vgg19_warping")
+                    vgg_real_model = self.model_loader.load_model_for_step("cloth_warping", "vgg19_warping")
                     
                     if vgg_real_model is not None:
                         # RealAIModel에서 실제 PyTorch 모델 가져오기
@@ -4389,7 +4389,7 @@ class ClothWarpingStep(BaseStepMixin):
                     self.logger.info("🔥 ModelLoader를 통한 DenseNet 모델 로딩 시작")
                     
                     # ModelLoader의 load_model 메서드 사용
-                    densenet_real_model = self.model_loader.load_model("densenet121_ultra")
+                    densenet_real_model = self.model_loader.load_model_for_step("cloth_warping", "densenet121_ultra")
                     
                     if densenet_real_model is not None:
                         # RealAIModel에서 실제 PyTorch 모델 가져오기
@@ -5352,26 +5352,43 @@ class ClothWarpingStep(BaseStepMixin):
                     
                     warped_cloth = result['warped_cloth']
                     
-                    # 신뢰도 값 안전하게 추출
-                    confidence_raw = result.get('confidence', torch.tensor([0.75]))
+                    # 신뢰도 값 안전하게 추출 (강화된 버전)
+                    confidence_raw = result.get('confidence', 0.75)
+                    
+                    # 딕셔너리인 경우 안전하게 처리
                     if isinstance(confidence_raw, dict):
-                        confidence = torch.tensor([0.75])
-                        self.logger.warning(f"⚠️ RAFT 신뢰도가 딕셔너리 형태: {type(confidence_raw)}, 기본값 사용")
+                        # 딕셔너리에서 숫자 값 찾기
+                        confidence_value = 0.75
+                        for key, value in confidence_raw.items():
+                            if isinstance(value, (int, float)):
+                                confidence_value = float(value)
+                                break
+                            elif isinstance(value, torch.Tensor):
+                                try:
+                                    confidence_value = float(value.item())
+                                    break
+                                except:
+                                    continue
+                        confidence = torch.tensor([confidence_value])
+                        self.logger.warning(f"⚠️ RAFT 신뢰도가 딕셔너리 형태: {type(confidence_raw)}, 추출된 값: {confidence_value}")
                     elif isinstance(confidence_raw, (list, tuple)):
                         try:
-                            confidence = torch.tensor([float(confidence_raw[0]) if len(confidence_raw) > 0 else 0.75])
+                            confidence_value = float(confidence_raw[0]) if len(confidence_raw) > 0 else 0.75
+                            confidence = torch.tensor([confidence_value])
                         except (ValueError, TypeError):
                             confidence = torch.tensor([0.75])
                             self.logger.warning(f"⚠️ RAFT 신뢰도 리스트 변환 실패: {type(confidence_raw)}, 기본값 사용")
                     elif isinstance(confidence_raw, torch.Tensor):
-                        confidence = confidence_raw
+                        try:
+                            confidence_value = float(confidence_raw.item()) if confidence_raw.numel() == 1 else 0.75
+                            confidence = torch.tensor([confidence_value])
+                        except:
+                            confidence = torch.tensor([0.75])
+                            self.logger.warning(f"⚠️ RAFT 신뢰도 텐서 변환 실패: {type(confidence_raw)}, 기본값 사용")
                     else:
                         try:
-                            if isinstance(confidence_raw, (int, float)):
-                                confidence = torch.tensor([float(confidence_raw)])
-                            else:
-                                confidence = torch.tensor([0.75])
-                                self.logger.warning(f"⚠️ RAFT 신뢰도 타입 변환 실패: {type(confidence_raw)}, 기본값 사용")
+                            confidence_value = float(confidence_raw) if isinstance(confidence_raw, (int, float)) else 0.75
+                            confidence = torch.tensor([confidence_value])
                         except (ValueError, TypeError):
                             confidence = torch.tensor([0.75])
                             self.logger.warning(f"⚠️ RAFT 신뢰도 변환 실패: {type(confidence_raw)}, 기본값 사용")

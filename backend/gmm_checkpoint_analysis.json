@@ -1,0 +1,3188 @@
+{
+  "total_keys": 368,
+  "key_patterns": {
+    "gmm_backbone.cls_token": 1,
+    "gmm_backbone.pos_embed": 1,
+    "gmm_backbone.patch_embed": 2,
+    "gmm_backbone.blocks": 288,
+    "gmm_backbone.norm": 2,
+    "gmm_backbone.head": 2,
+    "pretrained.act_postprocess1": 6,
+    "pretrained.act_postprocess2": 6,
+    "pretrained.act_postprocess3": 4,
+    "pretrained.act_postprocess4": 6,
+    "scratch.layer1_rn": 1,
+    "scratch.layer2_rn": 1,
+    "scratch.layer3_rn": 1,
+    "scratch.layer4_rn": 1,
+    "scratch.refinenet1": 10,
+    "scratch.refinenet2": 10,
+    "scratch.refinenet3": 10,
+    "scratch.refinenet4": 10,
+    "scratch.output_conv": 6
+  },
+  "key_structure": {
+    "gmm_backbone.cls_token": {
+      "shape": [
+        1,
+        1,
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.pos_embed": {
+      "shape": [
+        1,
+        577,
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 590848
+    },
+    "gmm_backbone.patch_embed.proj.weight": {
+      "shape": [
+        1024,
+        3,
+        16,
+        16
+      ],
+      "dtype": "torch.float32",
+      "num_params": 786432
+    },
+    "gmm_backbone.patch_embed.proj.bias": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.0.norm1.weight": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.0.norm1.bias": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.0.attn.qkv.weight": {
+      "shape": [
+        3072,
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 3145728
+    },
+    "gmm_backbone.blocks.0.attn.qkv.bias": {
+      "shape": [
+        3072
+      ],
+      "dtype": "torch.float32",
+      "num_params": 3072
+    },
+    "gmm_backbone.blocks.0.attn.proj.weight": {
+      "shape": [
+        1024,
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1048576
+    },
+    "gmm_backbone.blocks.0.attn.proj.bias": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.0.norm2.weight": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.0.norm2.bias": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.0.mlp.fc1.weight": {
+      "shape": [
+        4096,
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 4194304
+    },
+    "gmm_backbone.blocks.0.mlp.fc1.bias": {
+      "shape": [
+        4096
+      ],
+      "dtype": "torch.float32",
+      "num_params": 4096
+    },
+    "gmm_backbone.blocks.0.mlp.fc2.weight": {
+      "shape": [
+        1024,
+        4096
+      ],
+      "dtype": "torch.float32",
+      "num_params": 4194304
+    },
+    "gmm_backbone.blocks.0.mlp.fc2.bias": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.1.norm1.weight": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.1.norm1.bias": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.1.attn.qkv.weight": {
+      "shape": [
+        3072,
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 3145728
+    },
+    "gmm_backbone.blocks.1.attn.qkv.bias": {
+      "shape": [
+        3072
+      ],
+      "dtype": "torch.float32",
+      "num_params": 3072
+    },
+    "gmm_backbone.blocks.1.attn.proj.weight": {
+      "shape": [
+        1024,
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1048576
+    },
+    "gmm_backbone.blocks.1.attn.proj.bias": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.1.norm2.weight": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.1.norm2.bias": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.1.mlp.fc1.weight": {
+      "shape": [
+        4096,
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 4194304
+    },
+    "gmm_backbone.blocks.1.mlp.fc1.bias": {
+      "shape": [
+        4096
+      ],
+      "dtype": "torch.float32",
+      "num_params": 4096
+    },
+    "gmm_backbone.blocks.1.mlp.fc2.weight": {
+      "shape": [
+        1024,
+        4096
+      ],
+      "dtype": "torch.float32",
+      "num_params": 4194304
+    },
+    "gmm_backbone.blocks.1.mlp.fc2.bias": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.2.norm1.weight": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.2.norm1.bias": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.2.attn.qkv.weight": {
+      "shape": [
+        3072,
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 3145728
+    },
+    "gmm_backbone.blocks.2.attn.qkv.bias": {
+      "shape": [
+        3072
+      ],
+      "dtype": "torch.float32",
+      "num_params": 3072
+    },
+    "gmm_backbone.blocks.2.attn.proj.weight": {
+      "shape": [
+        1024,
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1048576
+    },
+    "gmm_backbone.blocks.2.attn.proj.bias": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.2.norm2.weight": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.2.norm2.bias": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.2.mlp.fc1.weight": {
+      "shape": [
+        4096,
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 4194304
+    },
+    "gmm_backbone.blocks.2.mlp.fc1.bias": {
+      "shape": [
+        4096
+      ],
+      "dtype": "torch.float32",
+      "num_params": 4096
+    },
+    "gmm_backbone.blocks.2.mlp.fc2.weight": {
+      "shape": [
+        1024,
+        4096
+      ],
+      "dtype": "torch.float32",
+      "num_params": 4194304
+    },
+    "gmm_backbone.blocks.2.mlp.fc2.bias": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.3.norm1.weight": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.3.norm1.bias": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.3.attn.qkv.weight": {
+      "shape": [
+        3072,
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 3145728
+    },
+    "gmm_backbone.blocks.3.attn.qkv.bias": {
+      "shape": [
+        3072
+      ],
+      "dtype": "torch.float32",
+      "num_params": 3072
+    },
+    "gmm_backbone.blocks.3.attn.proj.weight": {
+      "shape": [
+        1024,
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1048576
+    },
+    "gmm_backbone.blocks.3.attn.proj.bias": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.3.norm2.weight": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.3.norm2.bias": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.3.mlp.fc1.weight": {
+      "shape": [
+        4096,
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 4194304
+    },
+    "gmm_backbone.blocks.3.mlp.fc1.bias": {
+      "shape": [
+        4096
+      ],
+      "dtype": "torch.float32",
+      "num_params": 4096
+    },
+    "gmm_backbone.blocks.3.mlp.fc2.weight": {
+      "shape": [
+        1024,
+        4096
+      ],
+      "dtype": "torch.float32",
+      "num_params": 4194304
+    },
+    "gmm_backbone.blocks.3.mlp.fc2.bias": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.4.norm1.weight": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.4.norm1.bias": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.4.attn.qkv.weight": {
+      "shape": [
+        3072,
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 3145728
+    },
+    "gmm_backbone.blocks.4.attn.qkv.bias": {
+      "shape": [
+        3072
+      ],
+      "dtype": "torch.float32",
+      "num_params": 3072
+    },
+    "gmm_backbone.blocks.4.attn.proj.weight": {
+      "shape": [
+        1024,
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1048576
+    },
+    "gmm_backbone.blocks.4.attn.proj.bias": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.4.norm2.weight": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.4.norm2.bias": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.4.mlp.fc1.weight": {
+      "shape": [
+        4096,
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 4194304
+    },
+    "gmm_backbone.blocks.4.mlp.fc1.bias": {
+      "shape": [
+        4096
+      ],
+      "dtype": "torch.float32",
+      "num_params": 4096
+    },
+    "gmm_backbone.blocks.4.mlp.fc2.weight": {
+      "shape": [
+        1024,
+        4096
+      ],
+      "dtype": "torch.float32",
+      "num_params": 4194304
+    },
+    "gmm_backbone.blocks.4.mlp.fc2.bias": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.5.norm1.weight": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.5.norm1.bias": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.5.attn.qkv.weight": {
+      "shape": [
+        3072,
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 3145728
+    },
+    "gmm_backbone.blocks.5.attn.qkv.bias": {
+      "shape": [
+        3072
+      ],
+      "dtype": "torch.float32",
+      "num_params": 3072
+    },
+    "gmm_backbone.blocks.5.attn.proj.weight": {
+      "shape": [
+        1024,
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1048576
+    },
+    "gmm_backbone.blocks.5.attn.proj.bias": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.5.norm2.weight": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.5.norm2.bias": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.5.mlp.fc1.weight": {
+      "shape": [
+        4096,
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 4194304
+    },
+    "gmm_backbone.blocks.5.mlp.fc1.bias": {
+      "shape": [
+        4096
+      ],
+      "dtype": "torch.float32",
+      "num_params": 4096
+    },
+    "gmm_backbone.blocks.5.mlp.fc2.weight": {
+      "shape": [
+        1024,
+        4096
+      ],
+      "dtype": "torch.float32",
+      "num_params": 4194304
+    },
+    "gmm_backbone.blocks.5.mlp.fc2.bias": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.6.norm1.weight": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.6.norm1.bias": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.6.attn.qkv.weight": {
+      "shape": [
+        3072,
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 3145728
+    },
+    "gmm_backbone.blocks.6.attn.qkv.bias": {
+      "shape": [
+        3072
+      ],
+      "dtype": "torch.float32",
+      "num_params": 3072
+    },
+    "gmm_backbone.blocks.6.attn.proj.weight": {
+      "shape": [
+        1024,
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1048576
+    },
+    "gmm_backbone.blocks.6.attn.proj.bias": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.6.norm2.weight": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.6.norm2.bias": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.6.mlp.fc1.weight": {
+      "shape": [
+        4096,
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 4194304
+    },
+    "gmm_backbone.blocks.6.mlp.fc1.bias": {
+      "shape": [
+        4096
+      ],
+      "dtype": "torch.float32",
+      "num_params": 4096
+    },
+    "gmm_backbone.blocks.6.mlp.fc2.weight": {
+      "shape": [
+        1024,
+        4096
+      ],
+      "dtype": "torch.float32",
+      "num_params": 4194304
+    },
+    "gmm_backbone.blocks.6.mlp.fc2.bias": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.7.norm1.weight": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.7.norm1.bias": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.7.attn.qkv.weight": {
+      "shape": [
+        3072,
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 3145728
+    },
+    "gmm_backbone.blocks.7.attn.qkv.bias": {
+      "shape": [
+        3072
+      ],
+      "dtype": "torch.float32",
+      "num_params": 3072
+    },
+    "gmm_backbone.blocks.7.attn.proj.weight": {
+      "shape": [
+        1024,
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1048576
+    },
+    "gmm_backbone.blocks.7.attn.proj.bias": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.7.norm2.weight": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.7.norm2.bias": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.7.mlp.fc1.weight": {
+      "shape": [
+        4096,
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 4194304
+    },
+    "gmm_backbone.blocks.7.mlp.fc1.bias": {
+      "shape": [
+        4096
+      ],
+      "dtype": "torch.float32",
+      "num_params": 4096
+    },
+    "gmm_backbone.blocks.7.mlp.fc2.weight": {
+      "shape": [
+        1024,
+        4096
+      ],
+      "dtype": "torch.float32",
+      "num_params": 4194304
+    },
+    "gmm_backbone.blocks.7.mlp.fc2.bias": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.8.norm1.weight": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.8.norm1.bias": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.8.attn.qkv.weight": {
+      "shape": [
+        3072,
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 3145728
+    },
+    "gmm_backbone.blocks.8.attn.qkv.bias": {
+      "shape": [
+        3072
+      ],
+      "dtype": "torch.float32",
+      "num_params": 3072
+    },
+    "gmm_backbone.blocks.8.attn.proj.weight": {
+      "shape": [
+        1024,
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1048576
+    },
+    "gmm_backbone.blocks.8.attn.proj.bias": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.8.norm2.weight": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.8.norm2.bias": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.8.mlp.fc1.weight": {
+      "shape": [
+        4096,
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 4194304
+    },
+    "gmm_backbone.blocks.8.mlp.fc1.bias": {
+      "shape": [
+        4096
+      ],
+      "dtype": "torch.float32",
+      "num_params": 4096
+    },
+    "gmm_backbone.blocks.8.mlp.fc2.weight": {
+      "shape": [
+        1024,
+        4096
+      ],
+      "dtype": "torch.float32",
+      "num_params": 4194304
+    },
+    "gmm_backbone.blocks.8.mlp.fc2.bias": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.9.norm1.weight": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.9.norm1.bias": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.9.attn.qkv.weight": {
+      "shape": [
+        3072,
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 3145728
+    },
+    "gmm_backbone.blocks.9.attn.qkv.bias": {
+      "shape": [
+        3072
+      ],
+      "dtype": "torch.float32",
+      "num_params": 3072
+    },
+    "gmm_backbone.blocks.9.attn.proj.weight": {
+      "shape": [
+        1024,
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1048576
+    },
+    "gmm_backbone.blocks.9.attn.proj.bias": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.9.norm2.weight": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.9.norm2.bias": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.9.mlp.fc1.weight": {
+      "shape": [
+        4096,
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 4194304
+    },
+    "gmm_backbone.blocks.9.mlp.fc1.bias": {
+      "shape": [
+        4096
+      ],
+      "dtype": "torch.float32",
+      "num_params": 4096
+    },
+    "gmm_backbone.blocks.9.mlp.fc2.weight": {
+      "shape": [
+        1024,
+        4096
+      ],
+      "dtype": "torch.float32",
+      "num_params": 4194304
+    },
+    "gmm_backbone.blocks.9.mlp.fc2.bias": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.10.norm1.weight": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.10.norm1.bias": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.10.attn.qkv.weight": {
+      "shape": [
+        3072,
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 3145728
+    },
+    "gmm_backbone.blocks.10.attn.qkv.bias": {
+      "shape": [
+        3072
+      ],
+      "dtype": "torch.float32",
+      "num_params": 3072
+    },
+    "gmm_backbone.blocks.10.attn.proj.weight": {
+      "shape": [
+        1024,
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1048576
+    },
+    "gmm_backbone.blocks.10.attn.proj.bias": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.10.norm2.weight": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.10.norm2.bias": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.10.mlp.fc1.weight": {
+      "shape": [
+        4096,
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 4194304
+    },
+    "gmm_backbone.blocks.10.mlp.fc1.bias": {
+      "shape": [
+        4096
+      ],
+      "dtype": "torch.float32",
+      "num_params": 4096
+    },
+    "gmm_backbone.blocks.10.mlp.fc2.weight": {
+      "shape": [
+        1024,
+        4096
+      ],
+      "dtype": "torch.float32",
+      "num_params": 4194304
+    },
+    "gmm_backbone.blocks.10.mlp.fc2.bias": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.11.norm1.weight": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.11.norm1.bias": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.11.attn.qkv.weight": {
+      "shape": [
+        3072,
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 3145728
+    },
+    "gmm_backbone.blocks.11.attn.qkv.bias": {
+      "shape": [
+        3072
+      ],
+      "dtype": "torch.float32",
+      "num_params": 3072
+    },
+    "gmm_backbone.blocks.11.attn.proj.weight": {
+      "shape": [
+        1024,
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1048576
+    },
+    "gmm_backbone.blocks.11.attn.proj.bias": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.11.norm2.weight": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.11.norm2.bias": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.11.mlp.fc1.weight": {
+      "shape": [
+        4096,
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 4194304
+    },
+    "gmm_backbone.blocks.11.mlp.fc1.bias": {
+      "shape": [
+        4096
+      ],
+      "dtype": "torch.float32",
+      "num_params": 4096
+    },
+    "gmm_backbone.blocks.11.mlp.fc2.weight": {
+      "shape": [
+        1024,
+        4096
+      ],
+      "dtype": "torch.float32",
+      "num_params": 4194304
+    },
+    "gmm_backbone.blocks.11.mlp.fc2.bias": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.12.norm1.weight": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.12.norm1.bias": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.12.attn.qkv.weight": {
+      "shape": [
+        3072,
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 3145728
+    },
+    "gmm_backbone.blocks.12.attn.qkv.bias": {
+      "shape": [
+        3072
+      ],
+      "dtype": "torch.float32",
+      "num_params": 3072
+    },
+    "gmm_backbone.blocks.12.attn.proj.weight": {
+      "shape": [
+        1024,
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1048576
+    },
+    "gmm_backbone.blocks.12.attn.proj.bias": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.12.norm2.weight": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.12.norm2.bias": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.12.mlp.fc1.weight": {
+      "shape": [
+        4096,
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 4194304
+    },
+    "gmm_backbone.blocks.12.mlp.fc1.bias": {
+      "shape": [
+        4096
+      ],
+      "dtype": "torch.float32",
+      "num_params": 4096
+    },
+    "gmm_backbone.blocks.12.mlp.fc2.weight": {
+      "shape": [
+        1024,
+        4096
+      ],
+      "dtype": "torch.float32",
+      "num_params": 4194304
+    },
+    "gmm_backbone.blocks.12.mlp.fc2.bias": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.13.norm1.weight": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.13.norm1.bias": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.13.attn.qkv.weight": {
+      "shape": [
+        3072,
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 3145728
+    },
+    "gmm_backbone.blocks.13.attn.qkv.bias": {
+      "shape": [
+        3072
+      ],
+      "dtype": "torch.float32",
+      "num_params": 3072
+    },
+    "gmm_backbone.blocks.13.attn.proj.weight": {
+      "shape": [
+        1024,
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1048576
+    },
+    "gmm_backbone.blocks.13.attn.proj.bias": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.13.norm2.weight": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.13.norm2.bias": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.13.mlp.fc1.weight": {
+      "shape": [
+        4096,
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 4194304
+    },
+    "gmm_backbone.blocks.13.mlp.fc1.bias": {
+      "shape": [
+        4096
+      ],
+      "dtype": "torch.float32",
+      "num_params": 4096
+    },
+    "gmm_backbone.blocks.13.mlp.fc2.weight": {
+      "shape": [
+        1024,
+        4096
+      ],
+      "dtype": "torch.float32",
+      "num_params": 4194304
+    },
+    "gmm_backbone.blocks.13.mlp.fc2.bias": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.14.norm1.weight": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.14.norm1.bias": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.14.attn.qkv.weight": {
+      "shape": [
+        3072,
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 3145728
+    },
+    "gmm_backbone.blocks.14.attn.qkv.bias": {
+      "shape": [
+        3072
+      ],
+      "dtype": "torch.float32",
+      "num_params": 3072
+    },
+    "gmm_backbone.blocks.14.attn.proj.weight": {
+      "shape": [
+        1024,
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1048576
+    },
+    "gmm_backbone.blocks.14.attn.proj.bias": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.14.norm2.weight": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.14.norm2.bias": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.14.mlp.fc1.weight": {
+      "shape": [
+        4096,
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 4194304
+    },
+    "gmm_backbone.blocks.14.mlp.fc1.bias": {
+      "shape": [
+        4096
+      ],
+      "dtype": "torch.float32",
+      "num_params": 4096
+    },
+    "gmm_backbone.blocks.14.mlp.fc2.weight": {
+      "shape": [
+        1024,
+        4096
+      ],
+      "dtype": "torch.float32",
+      "num_params": 4194304
+    },
+    "gmm_backbone.blocks.14.mlp.fc2.bias": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.15.norm1.weight": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.15.norm1.bias": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.15.attn.qkv.weight": {
+      "shape": [
+        3072,
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 3145728
+    },
+    "gmm_backbone.blocks.15.attn.qkv.bias": {
+      "shape": [
+        3072
+      ],
+      "dtype": "torch.float32",
+      "num_params": 3072
+    },
+    "gmm_backbone.blocks.15.attn.proj.weight": {
+      "shape": [
+        1024,
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1048576
+    },
+    "gmm_backbone.blocks.15.attn.proj.bias": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.15.norm2.weight": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.15.norm2.bias": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.15.mlp.fc1.weight": {
+      "shape": [
+        4096,
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 4194304
+    },
+    "gmm_backbone.blocks.15.mlp.fc1.bias": {
+      "shape": [
+        4096
+      ],
+      "dtype": "torch.float32",
+      "num_params": 4096
+    },
+    "gmm_backbone.blocks.15.mlp.fc2.weight": {
+      "shape": [
+        1024,
+        4096
+      ],
+      "dtype": "torch.float32",
+      "num_params": 4194304
+    },
+    "gmm_backbone.blocks.15.mlp.fc2.bias": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.16.norm1.weight": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.16.norm1.bias": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.16.attn.qkv.weight": {
+      "shape": [
+        3072,
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 3145728
+    },
+    "gmm_backbone.blocks.16.attn.qkv.bias": {
+      "shape": [
+        3072
+      ],
+      "dtype": "torch.float32",
+      "num_params": 3072
+    },
+    "gmm_backbone.blocks.16.attn.proj.weight": {
+      "shape": [
+        1024,
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1048576
+    },
+    "gmm_backbone.blocks.16.attn.proj.bias": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.16.norm2.weight": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.16.norm2.bias": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.16.mlp.fc1.weight": {
+      "shape": [
+        4096,
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 4194304
+    },
+    "gmm_backbone.blocks.16.mlp.fc1.bias": {
+      "shape": [
+        4096
+      ],
+      "dtype": "torch.float32",
+      "num_params": 4096
+    },
+    "gmm_backbone.blocks.16.mlp.fc2.weight": {
+      "shape": [
+        1024,
+        4096
+      ],
+      "dtype": "torch.float32",
+      "num_params": 4194304
+    },
+    "gmm_backbone.blocks.16.mlp.fc2.bias": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.17.norm1.weight": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.17.norm1.bias": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.17.attn.qkv.weight": {
+      "shape": [
+        3072,
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 3145728
+    },
+    "gmm_backbone.blocks.17.attn.qkv.bias": {
+      "shape": [
+        3072
+      ],
+      "dtype": "torch.float32",
+      "num_params": 3072
+    },
+    "gmm_backbone.blocks.17.attn.proj.weight": {
+      "shape": [
+        1024,
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1048576
+    },
+    "gmm_backbone.blocks.17.attn.proj.bias": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.17.norm2.weight": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.17.norm2.bias": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.17.mlp.fc1.weight": {
+      "shape": [
+        4096,
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 4194304
+    },
+    "gmm_backbone.blocks.17.mlp.fc1.bias": {
+      "shape": [
+        4096
+      ],
+      "dtype": "torch.float32",
+      "num_params": 4096
+    },
+    "gmm_backbone.blocks.17.mlp.fc2.weight": {
+      "shape": [
+        1024,
+        4096
+      ],
+      "dtype": "torch.float32",
+      "num_params": 4194304
+    },
+    "gmm_backbone.blocks.17.mlp.fc2.bias": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.18.norm1.weight": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.18.norm1.bias": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.18.attn.qkv.weight": {
+      "shape": [
+        3072,
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 3145728
+    },
+    "gmm_backbone.blocks.18.attn.qkv.bias": {
+      "shape": [
+        3072
+      ],
+      "dtype": "torch.float32",
+      "num_params": 3072
+    },
+    "gmm_backbone.blocks.18.attn.proj.weight": {
+      "shape": [
+        1024,
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1048576
+    },
+    "gmm_backbone.blocks.18.attn.proj.bias": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.18.norm2.weight": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.18.norm2.bias": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.18.mlp.fc1.weight": {
+      "shape": [
+        4096,
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 4194304
+    },
+    "gmm_backbone.blocks.18.mlp.fc1.bias": {
+      "shape": [
+        4096
+      ],
+      "dtype": "torch.float32",
+      "num_params": 4096
+    },
+    "gmm_backbone.blocks.18.mlp.fc2.weight": {
+      "shape": [
+        1024,
+        4096
+      ],
+      "dtype": "torch.float32",
+      "num_params": 4194304
+    },
+    "gmm_backbone.blocks.18.mlp.fc2.bias": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.19.norm1.weight": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.19.norm1.bias": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.19.attn.qkv.weight": {
+      "shape": [
+        3072,
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 3145728
+    },
+    "gmm_backbone.blocks.19.attn.qkv.bias": {
+      "shape": [
+        3072
+      ],
+      "dtype": "torch.float32",
+      "num_params": 3072
+    },
+    "gmm_backbone.blocks.19.attn.proj.weight": {
+      "shape": [
+        1024,
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1048576
+    },
+    "gmm_backbone.blocks.19.attn.proj.bias": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.19.norm2.weight": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.19.norm2.bias": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.19.mlp.fc1.weight": {
+      "shape": [
+        4096,
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 4194304
+    },
+    "gmm_backbone.blocks.19.mlp.fc1.bias": {
+      "shape": [
+        4096
+      ],
+      "dtype": "torch.float32",
+      "num_params": 4096
+    },
+    "gmm_backbone.blocks.19.mlp.fc2.weight": {
+      "shape": [
+        1024,
+        4096
+      ],
+      "dtype": "torch.float32",
+      "num_params": 4194304
+    },
+    "gmm_backbone.blocks.19.mlp.fc2.bias": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.20.norm1.weight": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.20.norm1.bias": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.20.attn.qkv.weight": {
+      "shape": [
+        3072,
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 3145728
+    },
+    "gmm_backbone.blocks.20.attn.qkv.bias": {
+      "shape": [
+        3072
+      ],
+      "dtype": "torch.float32",
+      "num_params": 3072
+    },
+    "gmm_backbone.blocks.20.attn.proj.weight": {
+      "shape": [
+        1024,
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1048576
+    },
+    "gmm_backbone.blocks.20.attn.proj.bias": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.20.norm2.weight": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.20.norm2.bias": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.20.mlp.fc1.weight": {
+      "shape": [
+        4096,
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 4194304
+    },
+    "gmm_backbone.blocks.20.mlp.fc1.bias": {
+      "shape": [
+        4096
+      ],
+      "dtype": "torch.float32",
+      "num_params": 4096
+    },
+    "gmm_backbone.blocks.20.mlp.fc2.weight": {
+      "shape": [
+        1024,
+        4096
+      ],
+      "dtype": "torch.float32",
+      "num_params": 4194304
+    },
+    "gmm_backbone.blocks.20.mlp.fc2.bias": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.21.norm1.weight": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.21.norm1.bias": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.21.attn.qkv.weight": {
+      "shape": [
+        3072,
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 3145728
+    },
+    "gmm_backbone.blocks.21.attn.qkv.bias": {
+      "shape": [
+        3072
+      ],
+      "dtype": "torch.float32",
+      "num_params": 3072
+    },
+    "gmm_backbone.blocks.21.attn.proj.weight": {
+      "shape": [
+        1024,
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1048576
+    },
+    "gmm_backbone.blocks.21.attn.proj.bias": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.21.norm2.weight": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.21.norm2.bias": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.21.mlp.fc1.weight": {
+      "shape": [
+        4096,
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 4194304
+    },
+    "gmm_backbone.blocks.21.mlp.fc1.bias": {
+      "shape": [
+        4096
+      ],
+      "dtype": "torch.float32",
+      "num_params": 4096
+    },
+    "gmm_backbone.blocks.21.mlp.fc2.weight": {
+      "shape": [
+        1024,
+        4096
+      ],
+      "dtype": "torch.float32",
+      "num_params": 4194304
+    },
+    "gmm_backbone.blocks.21.mlp.fc2.bias": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.22.norm1.weight": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.22.norm1.bias": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.22.attn.qkv.weight": {
+      "shape": [
+        3072,
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 3145728
+    },
+    "gmm_backbone.blocks.22.attn.qkv.bias": {
+      "shape": [
+        3072
+      ],
+      "dtype": "torch.float32",
+      "num_params": 3072
+    },
+    "gmm_backbone.blocks.22.attn.proj.weight": {
+      "shape": [
+        1024,
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1048576
+    },
+    "gmm_backbone.blocks.22.attn.proj.bias": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.22.norm2.weight": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.22.norm2.bias": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.22.mlp.fc1.weight": {
+      "shape": [
+        4096,
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 4194304
+    },
+    "gmm_backbone.blocks.22.mlp.fc1.bias": {
+      "shape": [
+        4096
+      ],
+      "dtype": "torch.float32",
+      "num_params": 4096
+    },
+    "gmm_backbone.blocks.22.mlp.fc2.weight": {
+      "shape": [
+        1024,
+        4096
+      ],
+      "dtype": "torch.float32",
+      "num_params": 4194304
+    },
+    "gmm_backbone.blocks.22.mlp.fc2.bias": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.23.norm1.weight": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.23.norm1.bias": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.23.attn.qkv.weight": {
+      "shape": [
+        3072,
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 3145728
+    },
+    "gmm_backbone.blocks.23.attn.qkv.bias": {
+      "shape": [
+        3072
+      ],
+      "dtype": "torch.float32",
+      "num_params": 3072
+    },
+    "gmm_backbone.blocks.23.attn.proj.weight": {
+      "shape": [
+        1024,
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1048576
+    },
+    "gmm_backbone.blocks.23.attn.proj.bias": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.23.norm2.weight": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.23.norm2.bias": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.blocks.23.mlp.fc1.weight": {
+      "shape": [
+        4096,
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 4194304
+    },
+    "gmm_backbone.blocks.23.mlp.fc1.bias": {
+      "shape": [
+        4096
+      ],
+      "dtype": "torch.float32",
+      "num_params": 4096
+    },
+    "gmm_backbone.blocks.23.mlp.fc2.weight": {
+      "shape": [
+        1024,
+        4096
+      ],
+      "dtype": "torch.float32",
+      "num_params": 4194304
+    },
+    "gmm_backbone.blocks.23.mlp.fc2.bias": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.norm.weight": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.norm.bias": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "gmm_backbone.head.weight": {
+      "shape": [
+        1000,
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024000
+    },
+    "gmm_backbone.head.bias": {
+      "shape": [
+        1000
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1000
+    },
+    "pretrained.act_postprocess1.0.project.0.weight": {
+      "shape": [
+        1024,
+        2048
+      ],
+      "dtype": "torch.float32",
+      "num_params": 2097152
+    },
+    "pretrained.act_postprocess1.0.project.0.bias": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "pretrained.act_postprocess1.3.weight": {
+      "shape": [
+        256,
+        1024,
+        1,
+        1
+      ],
+      "dtype": "torch.float32",
+      "num_params": 262144
+    },
+    "pretrained.act_postprocess1.3.bias": {
+      "shape": [
+        256
+      ],
+      "dtype": "torch.float32",
+      "num_params": 256
+    },
+    "pretrained.act_postprocess1.4.weight": {
+      "shape": [
+        256,
+        256,
+        4,
+        4
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1048576
+    },
+    "pretrained.act_postprocess1.4.bias": {
+      "shape": [
+        256
+      ],
+      "dtype": "torch.float32",
+      "num_params": 256
+    },
+    "pretrained.act_postprocess2.0.project.0.weight": {
+      "shape": [
+        1024,
+        2048
+      ],
+      "dtype": "torch.float32",
+      "num_params": 2097152
+    },
+    "pretrained.act_postprocess2.0.project.0.bias": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "pretrained.act_postprocess2.3.weight": {
+      "shape": [
+        512,
+        1024,
+        1,
+        1
+      ],
+      "dtype": "torch.float32",
+      "num_params": 524288
+    },
+    "pretrained.act_postprocess2.3.bias": {
+      "shape": [
+        512
+      ],
+      "dtype": "torch.float32",
+      "num_params": 512
+    },
+    "pretrained.act_postprocess2.4.weight": {
+      "shape": [
+        512,
+        512,
+        2,
+        2
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1048576
+    },
+    "pretrained.act_postprocess2.4.bias": {
+      "shape": [
+        512
+      ],
+      "dtype": "torch.float32",
+      "num_params": 512
+    },
+    "pretrained.act_postprocess3.0.project.0.weight": {
+      "shape": [
+        1024,
+        2048
+      ],
+      "dtype": "torch.float32",
+      "num_params": 2097152
+    },
+    "pretrained.act_postprocess3.0.project.0.bias": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "pretrained.act_postprocess3.3.weight": {
+      "shape": [
+        1024,
+        1024,
+        1,
+        1
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1048576
+    },
+    "pretrained.act_postprocess3.3.bias": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "pretrained.act_postprocess4.0.project.0.weight": {
+      "shape": [
+        1024,
+        2048
+      ],
+      "dtype": "torch.float32",
+      "num_params": 2097152
+    },
+    "pretrained.act_postprocess4.0.project.0.bias": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "pretrained.act_postprocess4.3.weight": {
+      "shape": [
+        1024,
+        1024,
+        1,
+        1
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1048576
+    },
+    "pretrained.act_postprocess4.3.bias": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "pretrained.act_postprocess4.4.weight": {
+      "shape": [
+        1024,
+        1024,
+        3,
+        3
+      ],
+      "dtype": "torch.float32",
+      "num_params": 9437184
+    },
+    "pretrained.act_postprocess4.4.bias": {
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1024
+    },
+    "scratch.layer1_rn.weight": {
+      "shape": [
+        256,
+        256,
+        3,
+        3
+      ],
+      "dtype": "torch.float32",
+      "num_params": 589824
+    },
+    "scratch.layer2_rn.weight": {
+      "shape": [
+        256,
+        512,
+        3,
+        3
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1179648
+    },
+    "scratch.layer3_rn.weight": {
+      "shape": [
+        256,
+        1024,
+        3,
+        3
+      ],
+      "dtype": "torch.float32",
+      "num_params": 2359296
+    },
+    "scratch.layer4_rn.weight": {
+      "shape": [
+        256,
+        1024,
+        3,
+        3
+      ],
+      "dtype": "torch.float32",
+      "num_params": 2359296
+    },
+    "scratch.refinenet1.out_conv.weight": {
+      "shape": [
+        256,
+        256,
+        1,
+        1
+      ],
+      "dtype": "torch.float32",
+      "num_params": 65536
+    },
+    "scratch.refinenet1.out_conv.bias": {
+      "shape": [
+        256
+      ],
+      "dtype": "torch.float32",
+      "num_params": 256
+    },
+    "scratch.refinenet1.resConfUnit1.conv1.weight": {
+      "shape": [
+        256,
+        256,
+        3,
+        3
+      ],
+      "dtype": "torch.float32",
+      "num_params": 589824
+    },
+    "scratch.refinenet1.resConfUnit1.conv1.bias": {
+      "shape": [
+        256
+      ],
+      "dtype": "torch.float32",
+      "num_params": 256
+    },
+    "scratch.refinenet1.resConfUnit1.conv2.weight": {
+      "shape": [
+        256,
+        256,
+        3,
+        3
+      ],
+      "dtype": "torch.float32",
+      "num_params": 589824
+    },
+    "scratch.refinenet1.resConfUnit1.conv2.bias": {
+      "shape": [
+        256
+      ],
+      "dtype": "torch.float32",
+      "num_params": 256
+    },
+    "scratch.refinenet1.resConfUnit2.conv1.weight": {
+      "shape": [
+        256,
+        256,
+        3,
+        3
+      ],
+      "dtype": "torch.float32",
+      "num_params": 589824
+    },
+    "scratch.refinenet1.resConfUnit2.conv1.bias": {
+      "shape": [
+        256
+      ],
+      "dtype": "torch.float32",
+      "num_params": 256
+    },
+    "scratch.refinenet1.resConfUnit2.conv2.weight": {
+      "shape": [
+        256,
+        256,
+        3,
+        3
+      ],
+      "dtype": "torch.float32",
+      "num_params": 589824
+    },
+    "scratch.refinenet1.resConfUnit2.conv2.bias": {
+      "shape": [
+        256
+      ],
+      "dtype": "torch.float32",
+      "num_params": 256
+    },
+    "scratch.refinenet2.out_conv.weight": {
+      "shape": [
+        256,
+        256,
+        1,
+        1
+      ],
+      "dtype": "torch.float32",
+      "num_params": 65536
+    },
+    "scratch.refinenet2.out_conv.bias": {
+      "shape": [
+        256
+      ],
+      "dtype": "torch.float32",
+      "num_params": 256
+    },
+    "scratch.refinenet2.resConfUnit1.conv1.weight": {
+      "shape": [
+        256,
+        256,
+        3,
+        3
+      ],
+      "dtype": "torch.float32",
+      "num_params": 589824
+    },
+    "scratch.refinenet2.resConfUnit1.conv1.bias": {
+      "shape": [
+        256
+      ],
+      "dtype": "torch.float32",
+      "num_params": 256
+    },
+    "scratch.refinenet2.resConfUnit1.conv2.weight": {
+      "shape": [
+        256,
+        256,
+        3,
+        3
+      ],
+      "dtype": "torch.float32",
+      "num_params": 589824
+    },
+    "scratch.refinenet2.resConfUnit1.conv2.bias": {
+      "shape": [
+        256
+      ],
+      "dtype": "torch.float32",
+      "num_params": 256
+    },
+    "scratch.refinenet2.resConfUnit2.conv1.weight": {
+      "shape": [
+        256,
+        256,
+        3,
+        3
+      ],
+      "dtype": "torch.float32",
+      "num_params": 589824
+    },
+    "scratch.refinenet2.resConfUnit2.conv1.bias": {
+      "shape": [
+        256
+      ],
+      "dtype": "torch.float32",
+      "num_params": 256
+    },
+    "scratch.refinenet2.resConfUnit2.conv2.weight": {
+      "shape": [
+        256,
+        256,
+        3,
+        3
+      ],
+      "dtype": "torch.float32",
+      "num_params": 589824
+    },
+    "scratch.refinenet2.resConfUnit2.conv2.bias": {
+      "shape": [
+        256
+      ],
+      "dtype": "torch.float32",
+      "num_params": 256
+    },
+    "scratch.refinenet3.out_conv.weight": {
+      "shape": [
+        256,
+        256,
+        1,
+        1
+      ],
+      "dtype": "torch.float32",
+      "num_params": 65536
+    },
+    "scratch.refinenet3.out_conv.bias": {
+      "shape": [
+        256
+      ],
+      "dtype": "torch.float32",
+      "num_params": 256
+    },
+    "scratch.refinenet3.resConfUnit1.conv1.weight": {
+      "shape": [
+        256,
+        256,
+        3,
+        3
+      ],
+      "dtype": "torch.float32",
+      "num_params": 589824
+    },
+    "scratch.refinenet3.resConfUnit1.conv1.bias": {
+      "shape": [
+        256
+      ],
+      "dtype": "torch.float32",
+      "num_params": 256
+    },
+    "scratch.refinenet3.resConfUnit1.conv2.weight": {
+      "shape": [
+        256,
+        256,
+        3,
+        3
+      ],
+      "dtype": "torch.float32",
+      "num_params": 589824
+    },
+    "scratch.refinenet3.resConfUnit1.conv2.bias": {
+      "shape": [
+        256
+      ],
+      "dtype": "torch.float32",
+      "num_params": 256
+    },
+    "scratch.refinenet3.resConfUnit2.conv1.weight": {
+      "shape": [
+        256,
+        256,
+        3,
+        3
+      ],
+      "dtype": "torch.float32",
+      "num_params": 589824
+    },
+    "scratch.refinenet3.resConfUnit2.conv1.bias": {
+      "shape": [
+        256
+      ],
+      "dtype": "torch.float32",
+      "num_params": 256
+    },
+    "scratch.refinenet3.resConfUnit2.conv2.weight": {
+      "shape": [
+        256,
+        256,
+        3,
+        3
+      ],
+      "dtype": "torch.float32",
+      "num_params": 589824
+    },
+    "scratch.refinenet3.resConfUnit2.conv2.bias": {
+      "shape": [
+        256
+      ],
+      "dtype": "torch.float32",
+      "num_params": 256
+    },
+    "scratch.refinenet4.out_conv.weight": {
+      "shape": [
+        256,
+        256,
+        1,
+        1
+      ],
+      "dtype": "torch.float32",
+      "num_params": 65536
+    },
+    "scratch.refinenet4.out_conv.bias": {
+      "shape": [
+        256
+      ],
+      "dtype": "torch.float32",
+      "num_params": 256
+    },
+    "scratch.refinenet4.resConfUnit1.conv1.weight": {
+      "shape": [
+        256,
+        256,
+        3,
+        3
+      ],
+      "dtype": "torch.float32",
+      "num_params": 589824
+    },
+    "scratch.refinenet4.resConfUnit1.conv1.bias": {
+      "shape": [
+        256
+      ],
+      "dtype": "torch.float32",
+      "num_params": 256
+    },
+    "scratch.refinenet4.resConfUnit1.conv2.weight": {
+      "shape": [
+        256,
+        256,
+        3,
+        3
+      ],
+      "dtype": "torch.float32",
+      "num_params": 589824
+    },
+    "scratch.refinenet4.resConfUnit1.conv2.bias": {
+      "shape": [
+        256
+      ],
+      "dtype": "torch.float32",
+      "num_params": 256
+    },
+    "scratch.refinenet4.resConfUnit2.conv1.weight": {
+      "shape": [
+        256,
+        256,
+        3,
+        3
+      ],
+      "dtype": "torch.float32",
+      "num_params": 589824
+    },
+    "scratch.refinenet4.resConfUnit2.conv1.bias": {
+      "shape": [
+        256
+      ],
+      "dtype": "torch.float32",
+      "num_params": 256
+    },
+    "scratch.refinenet4.resConfUnit2.conv2.weight": {
+      "shape": [
+        256,
+        256,
+        3,
+        3
+      ],
+      "dtype": "torch.float32",
+      "num_params": 589824
+    },
+    "scratch.refinenet4.resConfUnit2.conv2.bias": {
+      "shape": [
+        256
+      ],
+      "dtype": "torch.float32",
+      "num_params": 256
+    },
+    "scratch.output_conv.0.weight": {
+      "shape": [
+        128,
+        256,
+        3,
+        3
+      ],
+      "dtype": "torch.float32",
+      "num_params": 294912
+    },
+    "scratch.output_conv.0.bias": {
+      "shape": [
+        128
+      ],
+      "dtype": "torch.float32",
+      "num_params": 128
+    },
+    "scratch.output_conv.2.weight": {
+      "shape": [
+        32,
+        128,
+        3,
+        3
+      ],
+      "dtype": "torch.float32",
+      "num_params": 36864
+    },
+    "scratch.output_conv.2.bias": {
+      "shape": [
+        32
+      ],
+      "dtype": "torch.float32",
+      "num_params": 32
+    },
+    "scratch.output_conv.4.weight": {
+      "shape": [
+        1,
+        32,
+        1,
+        1
+      ],
+      "dtype": "torch.float32",
+      "num_params": 32
+    },
+    "scratch.output_conv.4.bias": {
+      "shape": [
+        1
+      ],
+      "dtype": "torch.float32",
+      "num_params": 1
+    }
+  },
+  "modules": {
+    "gmm_backbone": [
+      "gmm_backbone.cls_token",
+      "gmm_backbone.pos_embed",
+      "gmm_backbone.patch_embed.proj.weight",
+      "gmm_backbone.patch_embed.proj.bias",
+      "gmm_backbone.blocks.0.norm1.weight",
+      "gmm_backbone.blocks.0.norm1.bias",
+      "gmm_backbone.blocks.0.attn.qkv.weight",
+      "gmm_backbone.blocks.0.attn.qkv.bias",
+      "gmm_backbone.blocks.0.attn.proj.weight",
+      "gmm_backbone.blocks.0.attn.proj.bias",
+      "gmm_backbone.blocks.0.norm2.weight",
+      "gmm_backbone.blocks.0.norm2.bias",
+      "gmm_backbone.blocks.0.mlp.fc1.weight",
+      "gmm_backbone.blocks.0.mlp.fc1.bias",
+      "gmm_backbone.blocks.0.mlp.fc2.weight",
+      "gmm_backbone.blocks.0.mlp.fc2.bias",
+      "gmm_backbone.blocks.1.norm1.weight",
+      "gmm_backbone.blocks.1.norm1.bias",
+      "gmm_backbone.blocks.1.attn.qkv.weight",
+      "gmm_backbone.blocks.1.attn.qkv.bias",
+      "gmm_backbone.blocks.1.attn.proj.weight",
+      "gmm_backbone.blocks.1.attn.proj.bias",
+      "gmm_backbone.blocks.1.norm2.weight",
+      "gmm_backbone.blocks.1.norm2.bias",
+      "gmm_backbone.blocks.1.mlp.fc1.weight",
+      "gmm_backbone.blocks.1.mlp.fc1.bias",
+      "gmm_backbone.blocks.1.mlp.fc2.weight",
+      "gmm_backbone.blocks.1.mlp.fc2.bias",
+      "gmm_backbone.blocks.2.norm1.weight",
+      "gmm_backbone.blocks.2.norm1.bias",
+      "gmm_backbone.blocks.2.attn.qkv.weight",
+      "gmm_backbone.blocks.2.attn.qkv.bias",
+      "gmm_backbone.blocks.2.attn.proj.weight",
+      "gmm_backbone.blocks.2.attn.proj.bias",
+      "gmm_backbone.blocks.2.norm2.weight",
+      "gmm_backbone.blocks.2.norm2.bias",
+      "gmm_backbone.blocks.2.mlp.fc1.weight",
+      "gmm_backbone.blocks.2.mlp.fc1.bias",
+      "gmm_backbone.blocks.2.mlp.fc2.weight",
+      "gmm_backbone.blocks.2.mlp.fc2.bias",
+      "gmm_backbone.blocks.3.norm1.weight",
+      "gmm_backbone.blocks.3.norm1.bias",
+      "gmm_backbone.blocks.3.attn.qkv.weight",
+      "gmm_backbone.blocks.3.attn.qkv.bias",
+      "gmm_backbone.blocks.3.attn.proj.weight",
+      "gmm_backbone.blocks.3.attn.proj.bias",
+      "gmm_backbone.blocks.3.norm2.weight",
+      "gmm_backbone.blocks.3.norm2.bias",
+      "gmm_backbone.blocks.3.mlp.fc1.weight",
+      "gmm_backbone.blocks.3.mlp.fc1.bias",
+      "gmm_backbone.blocks.3.mlp.fc2.weight",
+      "gmm_backbone.blocks.3.mlp.fc2.bias",
+      "gmm_backbone.blocks.4.norm1.weight",
+      "gmm_backbone.blocks.4.norm1.bias",
+      "gmm_backbone.blocks.4.attn.qkv.weight",
+      "gmm_backbone.blocks.4.attn.qkv.bias",
+      "gmm_backbone.blocks.4.attn.proj.weight",
+      "gmm_backbone.blocks.4.attn.proj.bias",
+      "gmm_backbone.blocks.4.norm2.weight",
+      "gmm_backbone.blocks.4.norm2.bias",
+      "gmm_backbone.blocks.4.mlp.fc1.weight",
+      "gmm_backbone.blocks.4.mlp.fc1.bias",
+      "gmm_backbone.blocks.4.mlp.fc2.weight",
+      "gmm_backbone.blocks.4.mlp.fc2.bias",
+      "gmm_backbone.blocks.5.norm1.weight",
+      "gmm_backbone.blocks.5.norm1.bias",
+      "gmm_backbone.blocks.5.attn.qkv.weight",
+      "gmm_backbone.blocks.5.attn.qkv.bias",
+      "gmm_backbone.blocks.5.attn.proj.weight",
+      "gmm_backbone.blocks.5.attn.proj.bias",
+      "gmm_backbone.blocks.5.norm2.weight",
+      "gmm_backbone.blocks.5.norm2.bias",
+      "gmm_backbone.blocks.5.mlp.fc1.weight",
+      "gmm_backbone.blocks.5.mlp.fc1.bias",
+      "gmm_backbone.blocks.5.mlp.fc2.weight",
+      "gmm_backbone.blocks.5.mlp.fc2.bias",
+      "gmm_backbone.blocks.6.norm1.weight",
+      "gmm_backbone.blocks.6.norm1.bias",
+      "gmm_backbone.blocks.6.attn.qkv.weight",
+      "gmm_backbone.blocks.6.attn.qkv.bias",
+      "gmm_backbone.blocks.6.attn.proj.weight",
+      "gmm_backbone.blocks.6.attn.proj.bias",
+      "gmm_backbone.blocks.6.norm2.weight",
+      "gmm_backbone.blocks.6.norm2.bias",
+      "gmm_backbone.blocks.6.mlp.fc1.weight",
+      "gmm_backbone.blocks.6.mlp.fc1.bias",
+      "gmm_backbone.blocks.6.mlp.fc2.weight",
+      "gmm_backbone.blocks.6.mlp.fc2.bias",
+      "gmm_backbone.blocks.7.norm1.weight",
+      "gmm_backbone.blocks.7.norm1.bias",
+      "gmm_backbone.blocks.7.attn.qkv.weight",
+      "gmm_backbone.blocks.7.attn.qkv.bias",
+      "gmm_backbone.blocks.7.attn.proj.weight",
+      "gmm_backbone.blocks.7.attn.proj.bias",
+      "gmm_backbone.blocks.7.norm2.weight",
+      "gmm_backbone.blocks.7.norm2.bias",
+      "gmm_backbone.blocks.7.mlp.fc1.weight",
+      "gmm_backbone.blocks.7.mlp.fc1.bias",
+      "gmm_backbone.blocks.7.mlp.fc2.weight",
+      "gmm_backbone.blocks.7.mlp.fc2.bias",
+      "gmm_backbone.blocks.8.norm1.weight",
+      "gmm_backbone.blocks.8.norm1.bias",
+      "gmm_backbone.blocks.8.attn.qkv.weight",
+      "gmm_backbone.blocks.8.attn.qkv.bias",
+      "gmm_backbone.blocks.8.attn.proj.weight",
+      "gmm_backbone.blocks.8.attn.proj.bias",
+      "gmm_backbone.blocks.8.norm2.weight",
+      "gmm_backbone.blocks.8.norm2.bias",
+      "gmm_backbone.blocks.8.mlp.fc1.weight",
+      "gmm_backbone.blocks.8.mlp.fc1.bias",
+      "gmm_backbone.blocks.8.mlp.fc2.weight",
+      "gmm_backbone.blocks.8.mlp.fc2.bias",
+      "gmm_backbone.blocks.9.norm1.weight",
+      "gmm_backbone.blocks.9.norm1.bias",
+      "gmm_backbone.blocks.9.attn.qkv.weight",
+      "gmm_backbone.blocks.9.attn.qkv.bias",
+      "gmm_backbone.blocks.9.attn.proj.weight",
+      "gmm_backbone.blocks.9.attn.proj.bias",
+      "gmm_backbone.blocks.9.norm2.weight",
+      "gmm_backbone.blocks.9.norm2.bias",
+      "gmm_backbone.blocks.9.mlp.fc1.weight",
+      "gmm_backbone.blocks.9.mlp.fc1.bias",
+      "gmm_backbone.blocks.9.mlp.fc2.weight",
+      "gmm_backbone.blocks.9.mlp.fc2.bias",
+      "gmm_backbone.blocks.10.norm1.weight",
+      "gmm_backbone.blocks.10.norm1.bias",
+      "gmm_backbone.blocks.10.attn.qkv.weight",
+      "gmm_backbone.blocks.10.attn.qkv.bias",
+      "gmm_backbone.blocks.10.attn.proj.weight",
+      "gmm_backbone.blocks.10.attn.proj.bias",
+      "gmm_backbone.blocks.10.norm2.weight",
+      "gmm_backbone.blocks.10.norm2.bias",
+      "gmm_backbone.blocks.10.mlp.fc1.weight",
+      "gmm_backbone.blocks.10.mlp.fc1.bias",
+      "gmm_backbone.blocks.10.mlp.fc2.weight",
+      "gmm_backbone.blocks.10.mlp.fc2.bias",
+      "gmm_backbone.blocks.11.norm1.weight",
+      "gmm_backbone.blocks.11.norm1.bias",
+      "gmm_backbone.blocks.11.attn.qkv.weight",
+      "gmm_backbone.blocks.11.attn.qkv.bias",
+      "gmm_backbone.blocks.11.attn.proj.weight",
+      "gmm_backbone.blocks.11.attn.proj.bias",
+      "gmm_backbone.blocks.11.norm2.weight",
+      "gmm_backbone.blocks.11.norm2.bias",
+      "gmm_backbone.blocks.11.mlp.fc1.weight",
+      "gmm_backbone.blocks.11.mlp.fc1.bias",
+      "gmm_backbone.blocks.11.mlp.fc2.weight",
+      "gmm_backbone.blocks.11.mlp.fc2.bias",
+      "gmm_backbone.blocks.12.norm1.weight",
+      "gmm_backbone.blocks.12.norm1.bias",
+      "gmm_backbone.blocks.12.attn.qkv.weight",
+      "gmm_backbone.blocks.12.attn.qkv.bias",
+      "gmm_backbone.blocks.12.attn.proj.weight",
+      "gmm_backbone.blocks.12.attn.proj.bias",
+      "gmm_backbone.blocks.12.norm2.weight",
+      "gmm_backbone.blocks.12.norm2.bias",
+      "gmm_backbone.blocks.12.mlp.fc1.weight",
+      "gmm_backbone.blocks.12.mlp.fc1.bias",
+      "gmm_backbone.blocks.12.mlp.fc2.weight",
+      "gmm_backbone.blocks.12.mlp.fc2.bias",
+      "gmm_backbone.blocks.13.norm1.weight",
+      "gmm_backbone.blocks.13.norm1.bias",
+      "gmm_backbone.blocks.13.attn.qkv.weight",
+      "gmm_backbone.blocks.13.attn.qkv.bias",
+      "gmm_backbone.blocks.13.attn.proj.weight",
+      "gmm_backbone.blocks.13.attn.proj.bias",
+      "gmm_backbone.blocks.13.norm2.weight",
+      "gmm_backbone.blocks.13.norm2.bias",
+      "gmm_backbone.blocks.13.mlp.fc1.weight",
+      "gmm_backbone.blocks.13.mlp.fc1.bias",
+      "gmm_backbone.blocks.13.mlp.fc2.weight",
+      "gmm_backbone.blocks.13.mlp.fc2.bias",
+      "gmm_backbone.blocks.14.norm1.weight",
+      "gmm_backbone.blocks.14.norm1.bias",
+      "gmm_backbone.blocks.14.attn.qkv.weight",
+      "gmm_backbone.blocks.14.attn.qkv.bias",
+      "gmm_backbone.blocks.14.attn.proj.weight",
+      "gmm_backbone.blocks.14.attn.proj.bias",
+      "gmm_backbone.blocks.14.norm2.weight",
+      "gmm_backbone.blocks.14.norm2.bias",
+      "gmm_backbone.blocks.14.mlp.fc1.weight",
+      "gmm_backbone.blocks.14.mlp.fc1.bias",
+      "gmm_backbone.blocks.14.mlp.fc2.weight",
+      "gmm_backbone.blocks.14.mlp.fc2.bias",
+      "gmm_backbone.blocks.15.norm1.weight",
+      "gmm_backbone.blocks.15.norm1.bias",
+      "gmm_backbone.blocks.15.attn.qkv.weight",
+      "gmm_backbone.blocks.15.attn.qkv.bias",
+      "gmm_backbone.blocks.15.attn.proj.weight",
+      "gmm_backbone.blocks.15.attn.proj.bias",
+      "gmm_backbone.blocks.15.norm2.weight",
+      "gmm_backbone.blocks.15.norm2.bias",
+      "gmm_backbone.blocks.15.mlp.fc1.weight",
+      "gmm_backbone.blocks.15.mlp.fc1.bias",
+      "gmm_backbone.blocks.15.mlp.fc2.weight",
+      "gmm_backbone.blocks.15.mlp.fc2.bias",
+      "gmm_backbone.blocks.16.norm1.weight",
+      "gmm_backbone.blocks.16.norm1.bias",
+      "gmm_backbone.blocks.16.attn.qkv.weight",
+      "gmm_backbone.blocks.16.attn.qkv.bias",
+      "gmm_backbone.blocks.16.attn.proj.weight",
+      "gmm_backbone.blocks.16.attn.proj.bias",
+      "gmm_backbone.blocks.16.norm2.weight",
+      "gmm_backbone.blocks.16.norm2.bias",
+      "gmm_backbone.blocks.16.mlp.fc1.weight",
+      "gmm_backbone.blocks.16.mlp.fc1.bias",
+      "gmm_backbone.blocks.16.mlp.fc2.weight",
+      "gmm_backbone.blocks.16.mlp.fc2.bias",
+      "gmm_backbone.blocks.17.norm1.weight",
+      "gmm_backbone.blocks.17.norm1.bias",
+      "gmm_backbone.blocks.17.attn.qkv.weight",
+      "gmm_backbone.blocks.17.attn.qkv.bias",
+      "gmm_backbone.blocks.17.attn.proj.weight",
+      "gmm_backbone.blocks.17.attn.proj.bias",
+      "gmm_backbone.blocks.17.norm2.weight",
+      "gmm_backbone.blocks.17.norm2.bias",
+      "gmm_backbone.blocks.17.mlp.fc1.weight",
+      "gmm_backbone.blocks.17.mlp.fc1.bias",
+      "gmm_backbone.blocks.17.mlp.fc2.weight",
+      "gmm_backbone.blocks.17.mlp.fc2.bias",
+      "gmm_backbone.blocks.18.norm1.weight",
+      "gmm_backbone.blocks.18.norm1.bias",
+      "gmm_backbone.blocks.18.attn.qkv.weight",
+      "gmm_backbone.blocks.18.attn.qkv.bias",
+      "gmm_backbone.blocks.18.attn.proj.weight",
+      "gmm_backbone.blocks.18.attn.proj.bias",
+      "gmm_backbone.blocks.18.norm2.weight",
+      "gmm_backbone.blocks.18.norm2.bias",
+      "gmm_backbone.blocks.18.mlp.fc1.weight",
+      "gmm_backbone.blocks.18.mlp.fc1.bias",
+      "gmm_backbone.blocks.18.mlp.fc2.weight",
+      "gmm_backbone.blocks.18.mlp.fc2.bias",
+      "gmm_backbone.blocks.19.norm1.weight",
+      "gmm_backbone.blocks.19.norm1.bias",
+      "gmm_backbone.blocks.19.attn.qkv.weight",
+      "gmm_backbone.blocks.19.attn.qkv.bias",
+      "gmm_backbone.blocks.19.attn.proj.weight",
+      "gmm_backbone.blocks.19.attn.proj.bias",
+      "gmm_backbone.blocks.19.norm2.weight",
+      "gmm_backbone.blocks.19.norm2.bias",
+      "gmm_backbone.blocks.19.mlp.fc1.weight",
+      "gmm_backbone.blocks.19.mlp.fc1.bias",
+      "gmm_backbone.blocks.19.mlp.fc2.weight",
+      "gmm_backbone.blocks.19.mlp.fc2.bias",
+      "gmm_backbone.blocks.20.norm1.weight",
+      "gmm_backbone.blocks.20.norm1.bias",
+      "gmm_backbone.blocks.20.attn.qkv.weight",
+      "gmm_backbone.blocks.20.attn.qkv.bias",
+      "gmm_backbone.blocks.20.attn.proj.weight",
+      "gmm_backbone.blocks.20.attn.proj.bias",
+      "gmm_backbone.blocks.20.norm2.weight",
+      "gmm_backbone.blocks.20.norm2.bias",
+      "gmm_backbone.blocks.20.mlp.fc1.weight",
+      "gmm_backbone.blocks.20.mlp.fc1.bias",
+      "gmm_backbone.blocks.20.mlp.fc2.weight",
+      "gmm_backbone.blocks.20.mlp.fc2.bias",
+      "gmm_backbone.blocks.21.norm1.weight",
+      "gmm_backbone.blocks.21.norm1.bias",
+      "gmm_backbone.blocks.21.attn.qkv.weight",
+      "gmm_backbone.blocks.21.attn.qkv.bias",
+      "gmm_backbone.blocks.21.attn.proj.weight",
+      "gmm_backbone.blocks.21.attn.proj.bias",
+      "gmm_backbone.blocks.21.norm2.weight",
+      "gmm_backbone.blocks.21.norm2.bias",
+      "gmm_backbone.blocks.21.mlp.fc1.weight",
+      "gmm_backbone.blocks.21.mlp.fc1.bias",
+      "gmm_backbone.blocks.21.mlp.fc2.weight",
+      "gmm_backbone.blocks.21.mlp.fc2.bias",
+      "gmm_backbone.blocks.22.norm1.weight",
+      "gmm_backbone.blocks.22.norm1.bias",
+      "gmm_backbone.blocks.22.attn.qkv.weight",
+      "gmm_backbone.blocks.22.attn.qkv.bias",
+      "gmm_backbone.blocks.22.attn.proj.weight",
+      "gmm_backbone.blocks.22.attn.proj.bias",
+      "gmm_backbone.blocks.22.norm2.weight",
+      "gmm_backbone.blocks.22.norm2.bias",
+      "gmm_backbone.blocks.22.mlp.fc1.weight",
+      "gmm_backbone.blocks.22.mlp.fc1.bias",
+      "gmm_backbone.blocks.22.mlp.fc2.weight",
+      "gmm_backbone.blocks.22.mlp.fc2.bias",
+      "gmm_backbone.blocks.23.norm1.weight",
+      "gmm_backbone.blocks.23.norm1.bias",
+      "gmm_backbone.blocks.23.attn.qkv.weight",
+      "gmm_backbone.blocks.23.attn.qkv.bias",
+      "gmm_backbone.blocks.23.attn.proj.weight",
+      "gmm_backbone.blocks.23.attn.proj.bias",
+      "gmm_backbone.blocks.23.norm2.weight",
+      "gmm_backbone.blocks.23.norm2.bias",
+      "gmm_backbone.blocks.23.mlp.fc1.weight",
+      "gmm_backbone.blocks.23.mlp.fc1.bias",
+      "gmm_backbone.blocks.23.mlp.fc2.weight",
+      "gmm_backbone.blocks.23.mlp.fc2.bias",
+      "gmm_backbone.norm.weight",
+      "gmm_backbone.norm.bias",
+      "gmm_backbone.head.weight",
+      "gmm_backbone.head.bias"
+    ],
+    "pretrained": [
+      "pretrained.act_postprocess1.0.project.0.weight",
+      "pretrained.act_postprocess1.0.project.0.bias",
+      "pretrained.act_postprocess1.3.weight",
+      "pretrained.act_postprocess1.3.bias",
+      "pretrained.act_postprocess1.4.weight",
+      "pretrained.act_postprocess1.4.bias",
+      "pretrained.act_postprocess2.0.project.0.weight",
+      "pretrained.act_postprocess2.0.project.0.bias",
+      "pretrained.act_postprocess2.3.weight",
+      "pretrained.act_postprocess2.3.bias",
+      "pretrained.act_postprocess2.4.weight",
+      "pretrained.act_postprocess2.4.bias",
+      "pretrained.act_postprocess3.0.project.0.weight",
+      "pretrained.act_postprocess3.0.project.0.bias",
+      "pretrained.act_postprocess3.3.weight",
+      "pretrained.act_postprocess3.3.bias",
+      "pretrained.act_postprocess4.0.project.0.weight",
+      "pretrained.act_postprocess4.0.project.0.bias",
+      "pretrained.act_postprocess4.3.weight",
+      "pretrained.act_postprocess4.3.bias",
+      "pretrained.act_postprocess4.4.weight",
+      "pretrained.act_postprocess4.4.bias"
+    ],
+    "scratch": [
+      "scratch.layer1_rn.weight",
+      "scratch.layer2_rn.weight",
+      "scratch.layer3_rn.weight",
+      "scratch.layer4_rn.weight",
+      "scratch.refinenet1.out_conv.weight",
+      "scratch.refinenet1.out_conv.bias",
+      "scratch.refinenet1.resConfUnit1.conv1.weight",
+      "scratch.refinenet1.resConfUnit1.conv1.bias",
+      "scratch.refinenet1.resConfUnit1.conv2.weight",
+      "scratch.refinenet1.resConfUnit1.conv2.bias",
+      "scratch.refinenet1.resConfUnit2.conv1.weight",
+      "scratch.refinenet1.resConfUnit2.conv1.bias",
+      "scratch.refinenet1.resConfUnit2.conv2.weight",
+      "scratch.refinenet1.resConfUnit2.conv2.bias",
+      "scratch.refinenet2.out_conv.weight",
+      "scratch.refinenet2.out_conv.bias",
+      "scratch.refinenet2.resConfUnit1.conv1.weight",
+      "scratch.refinenet2.resConfUnit1.conv1.bias",
+      "scratch.refinenet2.resConfUnit1.conv2.weight",
+      "scratch.refinenet2.resConfUnit1.conv2.bias",
+      "scratch.refinenet2.resConfUnit2.conv1.weight",
+      "scratch.refinenet2.resConfUnit2.conv1.bias",
+      "scratch.refinenet2.resConfUnit2.conv2.weight",
+      "scratch.refinenet2.resConfUnit2.conv2.bias",
+      "scratch.refinenet3.out_conv.weight",
+      "scratch.refinenet3.out_conv.bias",
+      "scratch.refinenet3.resConfUnit1.conv1.weight",
+      "scratch.refinenet3.resConfUnit1.conv1.bias",
+      "scratch.refinenet3.resConfUnit1.conv2.weight",
+      "scratch.refinenet3.resConfUnit1.conv2.bias",
+      "scratch.refinenet3.resConfUnit2.conv1.weight",
+      "scratch.refinenet3.resConfUnit2.conv1.bias",
+      "scratch.refinenet3.resConfUnit2.conv2.weight",
+      "scratch.refinenet3.resConfUnit2.conv2.bias",
+      "scratch.refinenet4.out_conv.weight",
+      "scratch.refinenet4.out_conv.bias",
+      "scratch.refinenet4.resConfUnit1.conv1.weight",
+      "scratch.refinenet4.resConfUnit1.conv1.bias",
+      "scratch.refinenet4.resConfUnit1.conv2.weight",
+      "scratch.refinenet4.resConfUnit1.conv2.bias",
+      "scratch.refinenet4.resConfUnit2.conv1.weight",
+      "scratch.refinenet4.resConfUnit2.conv1.bias",
+      "scratch.refinenet4.resConfUnit2.conv2.weight",
+      "scratch.refinenet4.resConfUnit2.conv2.bias",
+      "scratch.output_conv.0.weight",
+      "scratch.output_conv.0.bias",
+      "scratch.output_conv.2.weight",
+      "scratch.output_conv.2.bias",
+      "scratch.output_conv.4.weight",
+      "scratch.output_conv.4.bias"
+    ]
+  }
+}

@@ -1943,6 +1943,10 @@ class PostProcessingStep(BaseStepMixin):
     
     def __init__(self, **kwargs):
         """PostProcessingStep 초기화"""
+        # step_id 중복 방지
+        if 'step_id' in kwargs:
+            del kwargs['step_id']
+        
         super().__init__(
             step_name="PostProcessingStep",
             step_id=7,
@@ -2103,41 +2107,66 @@ class PostProcessingStep(BaseStepMixin):
     # ==============================================
     
     async def _load_real_ai_models_with_factory(self) -> bool:
-        """실제 AI 모델들 로딩"""
+        """🔥 ModelLoader를 통한 실제 AI 모델들 로딩"""
         try:
-            self.logger.info("🚀 실제 AI 모델 로딩 시작...")
+            self.logger.info("🚀 ModelLoader를 통한 실제 AI 모델 로딩 시작...")
             
-            # 1. 크기 우선 모델 경로 탐지
-            model_paths = self.model_mapper.get_prioritized_model_paths_with_size_check()
-            
-            if not model_paths:
-                self.logger.error("❌ 사용 가능한 AI 모델 파일이 없습니다")
-                return False
+            # ModelLoader가 있는지 확인
+            if not hasattr(self, 'model_loader') or self.model_loader is None:
+                self.logger.warning("⚠️ ModelLoader가 없음 - 직접 로딩 방식 사용")
+                return await self._load_models_directly()
             
             loaded_count = 0
             
-            # 2. 각 모델별 실제 로딩 시도
-            for model_path in model_paths:
-                try:
-                    model_name = model_path.stem
+            # 🔥 ModelLoader를 통한 모델 로딩
+            try:
+                # 1. ESRGAN 모델 로딩
+                esrgan_model = self.model_loader.load_model_for_step(
+                    step_type='post_processing',
+                    model_name='ESRGAN_x8.pth'
+                )
+                if esrgan_model is not None:
+                    self.ai_models['esrgan'] = esrgan_model
+                    self.models_loaded['esrgan'] = True
+                    loaded_count += 1
+                    self.logger.info("✅ ESRGAN 모델 로딩 성공 (ModelLoader)")
+                
+                # 2. SwinIR 모델 로딩
+                swinir_model = self.model_loader.load_model_for_step(
+                    step_type='post_processing',
+                    model_name='SwinIR-M_x4.pth'
+                )
+                if swinir_model is not None:
+                    self.ai_models['swinir'] = swinir_model
+                    self.models_loaded['swinir'] = True
+                    loaded_count += 1
+                    self.logger.info("✅ SwinIR 모델 로딩 성공 (ModelLoader)")
+                
+                # 3. Face Enhancement 모델 로딩
+                face_model = self.model_loader.load_model_for_step(
+                    step_type='post_processing',
+                    model_name='densenet161_enhance.pth'
+                )
+                if face_model is not None:
+                    self.ai_models['face_enhancement'] = face_model
+                    self.models_loaded['face_enhancement'] = True
+                    loaded_count += 1
+                    self.logger.info("✅ Face Enhancement 모델 로딩 성공 (ModelLoader)")
+                
+                # 4. Real-ESRGAN 모델 로딩
+                real_esrgan_model = self.model_loader.load_model_for_step(
+                    step_type='post_processing',
+                    model_name='RealESRGAN_x4plus.pth'
+                )
+                if real_esrgan_model is not None:
+                    self.ai_models['real_esrgan'] = real_esrgan_model
+                    self.models_loaded['real_esrgan'] = True
+                    loaded_count += 1
+                    self.logger.info("✅ Real-ESRGAN 모델 로딩 성공 (ModelLoader)")
                     
-                    self.logger.info(f"🔄 AI 모델 로딩 시도: {model_name}")
-                    
-                    # 실제 AI 클래스 생성
-                    ai_model = await self._create_real_ai_model_from_path(model_path)
-                    
-                    if ai_model is not None:
-                        model_type = self._get_model_type_from_path(model_path)
-                        self.ai_models[model_type] = ai_model
-                        self.models_loaded[model_type] = True
-                        loaded_count += 1
-                        self.logger.info(f"✅ {model_name} 실제 AI 모델 로딩 성공")
-                    else:
-                        self.logger.warning(f"⚠️ {model_name} AI 모델 클래스 생성 실패")
-                        
-                except Exception as e:
-                    self.logger.warning(f"⚠️ {model_path.name} 로딩 실패: {e}")
-                    continue
+            except Exception as e:
+                self.logger.warning(f"⚠️ ModelLoader를 통한 모델 로딩 실패: {e}")
+                return await self._load_models_directly()
             
             # 3. 🔥 검증된 Post Processing 아키텍처 정보 적용
             # ESRGAN: Residual Dense Block 기반 초해상도 네트워크
@@ -2177,16 +2206,67 @@ class PostProcessingStep(BaseStepMixin):
             
             # 4. 로딩 결과 분석
             if loaded_count > 0:
-                self.logger.info(f"🎉 실제 AI 모델 로딩 완료: {loaded_count}개")
+                self.logger.info(f"🎉 ModelLoader를 통한 AI 모델 로딩 완료: {loaded_count}개")
                 loaded_models = list(self.ai_models.keys())
                 self.logger.info(f"🤖 로딩된 AI 모델들: {', '.join(loaded_models)}")
                 return True
             else:
-                self.logger.error("❌ 모든 실제 AI 모델 로딩 실패")
-                return False
+                self.logger.warning("⚠️ ModelLoader를 통한 모델 로딩 실패 - 직접 로딩 시도")
+                return await self._load_models_directly()
             
         except Exception as e:
-            self.logger.error(f"❌ 실제 AI 모델 로딩 실패: {e}")
+            self.logger.error(f"❌ ModelLoader를 통한 AI 모델 로딩 실패: {e}")
+            return await self._load_models_directly()
+    
+    async def _load_models_directly(self) -> bool:
+        """직접 모델 로딩 방식 (폴백)"""
+        try:
+            self.logger.info("🔄 직접 모델 로딩 방식 시작...")
+            
+            # 1. 크기 우선 모델 경로 탐지
+            model_paths = self.model_mapper.get_prioritized_model_paths_with_size_check()
+            
+            if not model_paths:
+                self.logger.error("❌ 사용 가능한 AI 모델 파일이 없습니다")
+                return False
+            
+            loaded_count = 0
+            
+            # 2. 각 모델별 실제 로딩 시도
+            for model_path in model_paths:
+                try:
+                    model_name = model_path.stem
+                    
+                    self.logger.info(f"🔄 AI 모델 로딩 시도: {model_name}")
+                    
+                    # 실제 AI 클래스 생성
+                    ai_model = await self._create_real_ai_model_from_path(model_path)
+                    
+                    if ai_model is not None:
+                        model_type = self._get_model_type_from_path(model_path)
+                        self.ai_models[model_type] = ai_model
+                        self.models_loaded[model_type] = True
+                        loaded_count += 1
+                        self.logger.info(f"✅ {model_name} 직접 로딩 성공")
+                    else:
+                        self.logger.warning(f"⚠️ {model_name} AI 모델 클래스 생성 실패")
+                        
+                except Exception as e:
+                    self.logger.warning(f"⚠️ {model_path.name} 직접 로딩 실패: {e}")
+                    continue
+            
+            # 3. 로딩 결과 분석
+            if loaded_count > 0:
+                self.logger.info(f"🎉 직접 모델 로딩 완료: {loaded_count}개")
+                loaded_models = list(self.ai_models.keys())
+                self.logger.info(f"🤖 로딩된 AI 모델들: {', '.join(loaded_models)}")
+                return True
+            else:
+                self.logger.error("❌ 모든 직접 모델 로딩 실패")
+                return False
+                
+        except Exception as e:
+            self.logger.error(f"❌ 직접 모델 로딩 실패: {e}")
             return False
     
     async def _create_real_ai_model_from_path(self, model_path: Path) -> Optional[Any]:

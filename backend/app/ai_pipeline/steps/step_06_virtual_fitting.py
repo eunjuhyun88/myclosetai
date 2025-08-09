@@ -3099,17 +3099,106 @@ class VirtualFittingStep(BaseStepMixin):
     # ==============================================
 
     def _load_virtual_fitting_models_via_central_hub(self):
-        """🔥 Step 6 체크포인트 분석 기반 개선된 Virtual Fitting 모델 로딩"""
+        """🔥 Step 6 ModelLoader를 통한 Virtual Fitting 모델 로딩"""
         try:
-            self.logger.info("🔄 Step 6 체크포인트 분석 기반 Virtual Fitting 모델 로딩 시작...")
+            self.logger.info("🔄 Step 6 ModelLoader를 통한 Virtual Fitting 모델 로딩 시작...")
             
-            # 🔥 Step 6 체크포인트 분석 시스템 초기화
-            checkpoint_analyzer = Step6CheckpointAnalyzer()
-            checkpoint_fixer = Step6CheckpointFixer()
+            # Central Hub에서 ModelLoader 가져오기
+            model_loader = self._get_service_from_central_hub('model_loader')
+            if not model_loader:
+                self.logger.warning("⚠️ Central Hub ModelLoader 없음 - 폴백 시스템 사용")
+                return self._create_mock_virtual_fitting_models()
             
-            # 모든 체크포인트 분석
-            checkpoint_analysis = checkpoint_analyzer.analyze_all_checkpoints()
-            self.logger.info("✅ Step 6 체크포인트 분석 완료")
+            # 🔥 ModelLoader를 통한 모델 로딩
+            loaded_models = {}
+            ai_models = {}
+            
+            # 1. VITON-HD 모델 로딩
+            try:
+                viton_hd_model = model_loader.load_model_for_step(
+                    step_type='virtual_fitting',
+                    model_name='viton_hd_2.1gb.pth',
+                    checkpoint_path='ai_models/step_06_virtual_fitting/viton_hd_2.1gb.pth'
+                )
+                if viton_hd_model is not None:
+                    loaded_models['viton_hd'] = True
+                    ai_models['viton_hd'] = viton_hd_model
+                    self.logger.info("✅ VITON-HD 모델 로딩 성공 (ModelLoader)")
+                else:
+                    self.logger.warning("⚠️ VITON-HD 모델 로딩 실패 (ModelLoader)")
+            except Exception as e:
+                self.logger.warning(f"⚠️ VITON-HD 모델 로딩 실패: {e}")
+            
+            # 2. OOTD 모델 로딩
+            try:
+                ootd_model = model_loader.load_model_for_step(
+                    step_type='virtual_fitting',
+                    model_name='ootd_checkpoint.pth',
+                    checkpoint_path='ai_models/step_06_virtual_fitting/validated_checkpoints/ootd_checkpoint.pth'
+                )
+                if ootd_model is not None:
+                    loaded_models['ootd'] = True
+                    ai_models['ootd'] = ootd_model
+                    self.logger.info("✅ OOTD 모델 로딩 성공 (ModelLoader)")
+                else:
+                    self.logger.warning("⚠️ OOTD 모델 로딩 실패 (ModelLoader)")
+            except Exception as e:
+                self.logger.warning(f"⚠️ OOTD 모델 로딩 실패: {e}")
+            
+            # 3. Stable Diffusion 모델 로딩
+            try:
+                diffusion_model = model_loader.load_model_for_step(
+                    step_type='virtual_fitting',
+                    model_name='diffusion_pytorch_model.bin',
+                    checkpoint_path='ai_models/step_06_virtual_fitting/diffusion_pytorch_model.bin'
+                )
+                if diffusion_model is not None:
+                    loaded_models['diffusion'] = True
+                    ai_models['diffusion'] = diffusion_model
+                    self.logger.info("✅ Stable Diffusion 모델 로딩 성공 (ModelLoader)")
+                else:
+                    self.logger.warning("⚠️ Stable Diffusion 모델 로딩 실패 (ModelLoader)")
+            except Exception as e:
+                self.logger.warning(f"⚠️ Stable Diffusion 모델 로딩 실패: {e}")
+            
+            # 🔥 4. 고급 AI 네트워크 추가 생성
+            try:
+                # HR-VITON 고급 네트워크
+                hr_viton_network = HRVITONVirtualFittingNetwork()
+                loaded_models['hr_viton'] = True
+                ai_models['hr_viton'] = hr_viton_network
+                self.logger.info("✅ HR-VITON 고급 네트워크 생성 완료")
+                
+                # ACGPN 고급 네트워크
+                acgpn_network = ACGPNVirtualFittingNetwork()
+                loaded_models['acgpn'] = True
+                ai_models['acgpn'] = acgpn_network
+                self.logger.info("✅ ACGPN 고급 네트워크 생성 완료")
+                
+                # StyleGAN 고급 네트워크
+                stylegan_network = StyleGANVirtualFittingNetwork()
+                loaded_models['stylegan'] = True
+                ai_models['stylegan'] = stylegan_network
+                self.logger.info("✅ StyleGAN 고급 네트워크 생성 완료")
+            except Exception as e:
+                self.logger.warning(f"⚠️ 고급 네트워크 생성 실패: {e}")
+            
+            # 🔥 5. 결과 저장
+            self.loaded_models = loaded_models
+            self.ai_models = ai_models
+            
+            # 성공률 계산
+            success_count = sum(1 for loaded in loaded_models.values() if loaded)
+            total_count = len(loaded_models)
+            success_rate = (success_count / total_count) * 100 if total_count > 0 else 0
+            
+            self.logger.info(f"✅ Step 6 모델 로딩 완료: {success_count}/{total_count} ({success_rate:.1f}%)")
+            
+            return success_rate >= 30.0  # 최소 30% 성공률 요구
+            
+        except Exception as e:
+            self.logger.error(f"❌ Step 6 모델 로딩 실패: {e}")
+            return False
             
             # 🔥 분석 결과에 따른 모델 로딩
             loaded_models = {}

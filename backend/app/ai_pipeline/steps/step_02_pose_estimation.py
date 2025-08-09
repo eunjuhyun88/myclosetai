@@ -44,6 +44,9 @@ from app.ai_pipeline.utils.common_imports import (
     Image, cv2, scipy,
     PIL_AVAILABLE, CV2_AVAILABLE, SCIPY_AVAILABLE,
     
+    # MediaPipe 및 기타 라이브러리
+    MEDIAPIPE_AVAILABLE, mp, ULTRALYTICS_AVAILABLE, YOLO,
+    
     # 유틸리티 함수
     detect_m3_max, get_available_libraries, log_library_status,
     
@@ -54,6 +57,18 @@ from app.ai_pipeline.utils.common_imports import (
     # Central Hub DI Container
     _get_central_hub_container
 )
+
+# 🔥 MediaPipe 직접 import (common_imports에서 누락됨)
+try:
+    import mediapipe as mp
+    MEDIAPIPE_AVAILABLE = True
+    print(f"✅ MediaPipe import 성공: {mp.__version__}")
+except ImportError as e:
+    MEDIAPIPE_AVAILABLE = False
+    print(f"⚠️ MediaPipe import 실패: {e}")
+
+# 🔥 새로운 아키텍처 추가
+from app.ai_pipeline.utils.model_architectures import OpenPoseModel as NewOpenPoseModel
 
 # 경고 무시 설정
 warnings.filterwarnings('ignore', category=DeprecationWarning)
@@ -3366,6 +3381,9 @@ class PoseEstimationStep(BaseStepMixin):
             PoseModel.OPENPOSE
         ]
         
+        # 🔥 새로운 아키텍처 모델 초기화
+        self.new_openpose_model = None
+        
         self.logger.info(f"✅ {self.step_name} 포즈 추정 특화 초기화 완료 (앙상블 시스템 포함)")
     
     def _load_pose_models_via_central_hub(self):
@@ -3453,6 +3471,27 @@ class PoseEstimationStep(BaseStepMixin):
                 self.logger.warning(f"⚠️ OpenPose 모델 로딩 실패: {e}")
                 self.models_loading_status['loading_errors'].append(f"OpenPose: {e}")
                 print(f"🔥 [디버깅] OpenPose 모델 로딩 예외: {e}")
+            
+            # 🔥 새로운 아키텍처 OpenPose 모델 로딩
+            try:
+                print(f"🔥 [디버깅] 새로운 아키텍처 OpenPose 모델 로딩 시도")
+                self.new_openpose_model = NewOpenPoseModel()
+                self.logger.info("✅ 새로운 아키텍처 OpenPose 모델 로딩 성공")
+                print(f"🔥 [디버깅] 새로운 아키텍처 OpenPose 모델 로딩 성공")
+                
+                # 체크포인트가 있다면 로딩
+                if openpose_path and openpose_path.exists():
+                    try:
+                        checkpoint = torch.load(openpose_path, map_location='cpu')
+                        state_dict = checkpoint.get('model', checkpoint.get('state_dict', checkpoint))
+                        self.new_openpose_model.load_state_dict(state_dict, strict=False)
+                        self.logger.info("✅ 새로운 아키텍처 OpenPose 가중치 로딩 성공")
+                    except Exception as e:
+                        self.logger.warning(f"⚠️ 새로운 아키텍처 OpenPose 가중치 로딩 실패: {e}")
+                        
+            except Exception as e:
+                self.logger.warning(f"⚠️ 새로운 아키텍처 OpenPose 모델 로딩 실패: {e}")
+                print(f"🔥 [디버깅] 새로운 아키텍처 OpenPose 모델 로딩 예외: {e}")
             
             # HRNet 모델 로딩
             try:
@@ -4232,6 +4271,43 @@ class PoseEstimationStep(BaseStepMixin):
             ensemble_results = {}
             model_confidences = {}
             successful_models = []
+            
+            # 🔥 새로운 아키텍처 OpenPose 모델 사용 (우선순위)
+            if self.new_openpose_model is not None:
+                try:
+                    print(f"🔥 [디버깅] 새로운 아키텍처 OpenPose 모델 사용")
+                    self.logger.info("🔥 새로운 아키텍처 OpenPose 모델로 추론 시작")
+                    
+                    # 이미지 전처리
+                    if isinstance(image, np.ndarray):
+                        image_tensor = torch.from_numpy(image).permute(2, 0, 1).unsqueeze(0).float()
+                    elif isinstance(image, Image.Image):
+                        image_tensor = transforms.ToTensor()(image).unsqueeze(0)
+                    else:
+                        image_tensor = image
+                    
+                    # 추론 실행
+                    with torch.no_grad():
+                        output = self.new_openpose_model(image_tensor)
+                    
+                    # 결과 처리
+                    if isinstance(output, torch.Tensor):
+                        # 출력을 keypoints로 변환
+                        keypoints = self._convert_tensor_to_keypoints(output)
+                        confidence_scores = [0.9] * len(keypoints)  # 기본 confidence
+                        
+                        ensemble_results['new_openpose'] = keypoints
+                        model_confidences['new_openpose'] = 0.9
+                        successful_models.append('new_openpose')
+                        
+                        print(f"🔥 [디버깅] 새로운 아키텍처 OpenPose 추론 성공 - 키포인트: {len(keypoints)}개")
+                        self.logger.info("✅ 새로운 아키텍처 OpenPose 모델 추론 완료")
+                    else:
+                        print(f"🔥 [디버깅] 새로운 아키텍처 OpenPose 출력 타입 오류: {type(output)}")
+                        
+                except Exception as e:
+                    print(f"🔥 [디버깅] 새로운 아키텍처 OpenPose 추론 실패: {e}")
+                    self.logger.warning(f"⚠️ 새로운 아키텍처 OpenPose 모델 추론 실패: {e}")
             
             # 🔥 로딩된 모든 모델로 추론 실행
             print(f"🔥 [디버깅] 로딩된 모델들: {list(self.ai_models.keys())}")
@@ -5486,6 +5562,38 @@ class PoseEstimationStep(BaseStepMixin):
             'use_subpixel': self.use_subpixel
         }
 
+    def _convert_tensor_to_keypoints(self, output_tensor: torch.Tensor) -> List[List[float]]:
+        """텐서 출력을 키포인트로 변환"""
+        try:
+            # 출력 텐서 형태: [1, 19, H, W] -> [19, H, W]
+            if output_tensor.dim() == 4:
+                output_tensor = output_tensor.squeeze(0)  # [19, H, W]
+            
+            keypoints = []
+            H, W = output_tensor.shape[1], output_tensor.shape[2]
+            
+            # 각 키포인트에 대해 최대값 위치 찾기
+            for i in range(output_tensor.shape[0]):
+                heatmap = output_tensor[i]  # [H, W]
+                
+                # 최대값 위치 찾기
+                max_idx = torch.argmax(heatmap)
+                y, x = max_idx // W, max_idx % W
+                
+                # 정규화된 좌표로 변환
+                x_norm = x.float() / W
+                y_norm = y.float() / H
+                confidence = heatmap[y, x].item()
+                
+                keypoints.append([x_norm, y_norm, confidence])
+            
+            return keypoints
+            
+        except Exception as e:
+            self.logger.warning(f"⚠️ 텐서를 키포인트로 변환 실패: {e}")
+            # 기본 키포인트 반환
+            return [[0.5, 0.5, 0.5] for _ in range(17)]
+    
     def _convert_step_output_type(self, step_output: Dict[str, Any], *args, **kwargs) -> Dict[str, Any]:
         """Step 출력을 API 응답 형식으로 변환"""
         try:

@@ -1090,11 +1090,26 @@ class GeometricMatchingStep(BaseStepMixin):
                 try:
                     logger.info(f"🔍 체크포인트 로딩 시도: {checkpoint_name}")
                     
-                    # ModelLoader의 load_model 메서드 사용
+                    # ModelLoader의 load_model_for_step 메서드 사용 (수정된 방식)
                     try:
-                        checkpoint_data = model_loader.load_model(checkpoint_name)
+                        loaded_model = model_loader.load_model_for_step(
+                            step_type='geometric_matching',
+                            model_name=checkpoint_name,
+                            checkpoint_path=None
+                        )
+                        if loaded_model:
+                            # 모델이 이미 로딩된 경우, 체크포인트 데이터는 None으로 설정
+                            checkpoint_data = None
+                            logger.info(f"✅ ModelLoader를 통한 모델 로딩 성공: {checkpoint_name}")
+                        else:
+                            # ModelLoader 실패 시 직접 로딩 시도
+                            checkpoint_path = model_loader.get_model_path(checkpoint_name)
+                            if checkpoint_path and checkpoint_path.exists():
+                                checkpoint_data = torch.load(str(checkpoint_path), map_location='cpu')
+                            else:
+                                checkpoint_data = None
                     except Exception as e:
-                        logger.warning(f"⚠️ 체크포인트 로딩 실패, 직접 로딩 시도: {e}")
+                        logger.warning(f"⚠️ ModelLoader 로딩 실패, 직접 로딩 시도: {e}")
                         # 직접 torch.load 시도
                         checkpoint_path = model_loader.get_model_path(checkpoint_name)
                         if checkpoint_path and checkpoint_path.exists():
@@ -1748,7 +1763,7 @@ class GeometricMatchingStep(BaseStepMixin):
                 logger.info("🔥 ModelLoader를 통한 GMM 모델 로딩 시작")
                 
                 # ModelLoader의 load_model 메서드 사용
-                gmm_real_model = self.model_loader.load_model("gmm_final")
+                gmm_real_model = self.model_loader.load_model_for_step("geometric_matching", "gmm_final")
                 
                 if gmm_real_model is not None:
                     # RealAIModel에서 실제 PyTorch 모델 가져오기
@@ -1793,7 +1808,7 @@ class GeometricMatchingStep(BaseStepMixin):
                 logger.info("🔥 ModelLoader를 통한 TPS 모델 로딩 시작")
                 
                 # ModelLoader의 load_model 메서드 사용
-                tps_real_model = self.model_loader.load_model("tps_network")
+                tps_real_model = self.model_loader.load_model_for_step("geometric_matching", "tps_network")
                 
                 if tps_real_model is not None:
                     # RealAIModel에서 실제 PyTorch 모델 가져오기
@@ -1837,7 +1852,7 @@ class GeometricMatchingStep(BaseStepMixin):
                 logger.info("🔥 ModelLoader를 통한 RAFT 모델 로딩 시작")
                 
                 # ModelLoader의 load_model 메서드 사용
-                raft_real_model = self.model_loader.load_model("raft-things")
+                raft_real_model = self.model_loader.load_model_for_step("geometric_matching", "raft-things")
                 
                 if raft_real_model is not None:
                     # RealAIModel에서 실제 PyTorch 모델 가져오기
@@ -1882,7 +1897,7 @@ class GeometricMatchingStep(BaseStepMixin):
                 logger.info("🔥 ModelLoader를 통한 SAM 모델 로딩 시작")
                 
                 # ModelLoader의 load_model 메서드 사용
-                sam_real_model = self.model_loader.load_model("sam_vit_h_4b8939")
+                sam_real_model = self.model_loader.load_model_for_step("geometric_matching", "sam_vit_h_4b8939")
                 
                 if sam_real_model is not None:
                     # RealAIModel에서 실제 PyTorch 모델 가져오기

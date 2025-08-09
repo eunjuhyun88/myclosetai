@@ -375,7 +375,7 @@ MOCK_DIAGNOSTIC_AVAILABLE = True
 # ==============================================
 try:
     from app.core.exceptions import (
-        MyClosetAIException,
+        MyClosetAIException, 
         MockDataDetectionError, 
         DataQualityError, 
         ModelInferenceError,
@@ -383,7 +383,6 @@ try:
         ImageProcessingError,
         DataValidationError,
         ConfigurationError,
-        error_tracker,
         detect_mock_data,
         log_detailed_error,
         create_mock_data_diagnosis_response,
@@ -393,6 +392,11 @@ try:
         convert_to_mycloset_exception,
         ErrorCodes
     )
+    # error_tracker는 별도로 import
+    try:
+        from app.core.exceptions import error_tracker
+    except ImportError:
+        error_tracker = None
     EXCEPTIONS_AVAILABLE = True
     print("✅ 통합 에러 처리 시스템 로드 완료")
 except ImportError:
@@ -424,12 +428,36 @@ except ImportError:
         logger = logging.getLogger(__name__)
         logger.error(f"Track Exception (폴백): {error}")
         return None
+    
+    def get_error_summary():
+        """폴백 get_error_summary 함수"""
+        return {
+            'total_errors': 0,
+            'error_types': {},
+            'recent_errors': [],
+            'system_status': 'healthy'
+        }
+    
     def log_detailed_error(error, context, step_id):
         pass
     def create_exception_response(error, step_name, step_id, session_id):
         return {'success': False, 'error': str(error)}
     def convert_to_mycloset_exception(error, context):
         return MyClosetAIException(str(error))
+    
+    def create_mock_data_diagnosis_response(data, step_name, step_id, session_id):
+        """폴백 create_mock_data_diagnosis_response 함수"""
+        return {
+            'success': False,
+            'is_mock_data': True,
+            'step_name': step_name,
+            'step_id': step_id,
+            'session_id': session_id,
+            'diagnosis': {'is_mock': True, 'confidence': 0.0}
+        }
+    
+    # error_tracker 폴백
+    error_tracker = None
     
     class ErrorCodes:
         DATA_VALIDATION_FAILED = "DATA_VALIDATION_FAILED"

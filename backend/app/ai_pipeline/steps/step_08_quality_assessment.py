@@ -1344,7 +1344,7 @@ class QualityAssessmentStep(BaseStepMixin):
                     return True
             else:
                 # ModelLoader를 통한 AI 모델 로딩
-                model = self.model_loader.load_model(
+                model = self.model_loader.load_model_for_step("quality_assessment",
                     model_name=model_name,
                     step_name="QualityAssessmentStep",
                     model_type=model_type
