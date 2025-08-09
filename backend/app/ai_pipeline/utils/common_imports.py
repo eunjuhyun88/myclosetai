@@ -62,19 +62,14 @@ from itertools import chain
 
 # Model Loader System
 try:
-    from app.ai_pipeline.utils.auto_model_detector import AutoModelDetector as auto_model_detector
+    from app.ai_pipeline.models.auto_model_detector import AutoModelDetector as auto_model_detector
 except ImportError:
     auto_model_detector = None
 
 try:
-    from app.ai_pipeline.utils.dynamic_model_detector import DynamicModelDetector as dynamic_model_detector
+    from app.ai_pipeline.models.dynamic_model_detector import DynamicModelDetector as dynamic_model_detector
 except ImportError:
     dynamic_model_detector = None
-
-try:
-    from app.ai_pipeline.utils.smart_model_mapper import SmartModelMapper as smart_model_mapper
-except ImportError:
-    smart_model_mapper = None
 
 # Memory Management System
 try:
@@ -495,7 +490,7 @@ except ImportError:
 
 if TYPE_CHECKING:
     from app.core.di_container import CentralHubDIContainer
-    from app.ai_pipeline.utils.model_loader import ModelLoader
+    from app.ai_pipeline.models.model_loader import ModelLoader
     from app.ai_pipeline.steps.base_step_mixin import BaseStepMixin
 
 def _get_central_hub_container():

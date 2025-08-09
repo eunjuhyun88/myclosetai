@@ -139,7 +139,7 @@ class ModelLoaderAdapter(IModelLoader):
         
         try:
             # 실제 ModelLoader 가져오기
-            from ..utils.model_loader import get_global_model_loader
+            from ..models.model_loader import get_global_model_loader
             self._model_loader = get_global_model_loader()
             self._initialized = True
             self.logger.info("✅ 실제 ModelLoader 연결 성공")

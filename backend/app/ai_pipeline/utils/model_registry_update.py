@@ -3,7 +3,7 @@
 스캔된 모델들을 ModelLoader에 자동 등록
 """
 
-from app.ai_pipeline.utils.model_loader import ModelConfig, ModelType
+from app.ai_pipeline.models.model_loader import ModelConfig, ModelType
 from pathlib import Path
 
 def update_model_registry(model_loader):

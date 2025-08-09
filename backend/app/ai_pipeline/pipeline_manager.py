@@ -77,7 +77,7 @@ except ImportError as e:
 if TYPE_CHECKING:
     from app.ai_pipeline.steps.base_step_mixin import BaseStepMixin
     from app.ai_pipeline.factories.step_factory import StepFactory
-    from app.ai_pipeline.utils.model_loader import ModelLoader
+    from app.ai_pipeline.models.model_loader import ModelLoader
     from app.services.step_implementations import RealAIStepImplementationManager
 else:
     BaseStepMixin = Any

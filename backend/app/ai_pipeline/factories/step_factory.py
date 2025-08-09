@@ -432,7 +432,7 @@ def _inject_dependencies_safe(step_instance):
 # TYPE_CHECKING으로 순환참조 완전 방지
 if TYPE_CHECKING:
     from ..steps.base_step_mixin import BaseStepMixin
-    from ..utils.model_loader import ModelLoader, StepModelInterface
+    from ..models.model_loader import ModelLoader, StepModelInterface
     from ..utils.memory_manager import MemoryManager
     from ..utils.data_converter import DataConverter
     from app.core.di_container import CentralHubDIContainer
