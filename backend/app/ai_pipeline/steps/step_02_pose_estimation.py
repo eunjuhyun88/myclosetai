@@ -3387,18 +3387,18 @@ class PoseEstimationStep(BaseStepMixin):
         self.logger.info(f"✅ {self.step_name} 포즈 추정 특화 초기화 완료 (앙상블 시스템 포함)")
     
     def _load_pose_models_via_central_hub(self):
-        """Central Hub를 통한 Pose 모델 로딩"""
+        """Central Hub를 통한 Pose 모델 로딩 (앙상블 시스템 방식으로 개선)"""
         loaded_count = 0
         
-        print(f"🔥 [디버깅] _load_pose_models_via_central_hub 시작")
+        print(f"🔥 [디버깅] _load_pose_models_via_central_hub 시작 (앙상블 방식)")
         print(f"🔥 [디버깅] self.model_loader 존재: {self.model_loader is not None}")
         
         if self.model_loader:  # Central Hub에서 자동 주입됨
-            # MediaPipe 모델 로딩
+            # 1. MediaPipe 모델 로딩 (앙상블 방식)
             try:
                 print(f"🔥 [디버깅] MediaPipe 모델 로딩 시도")
-                mediapipe_model = MediaPoseModel()
-                if mediapipe_model.load_model():
+                mediapipe_model = self._load_mediapipe_via_central_hub_improved()
+                if mediapipe_model:
                     self.ai_models['mediapipe'] = mediapipe_model
                     self.models_loading_status['mediapipe'] = True
                     loaded_count += 1
@@ -3411,68 +3411,58 @@ class PoseEstimationStep(BaseStepMixin):
                 self.models_loading_status['loading_errors'].append(f"MediaPipe: {e}")
                 print(f"🔥 [디버깅] MediaPipe 모델 로딩 예외: {e}")
             
-            # YOLOv8 모델 로딩
+            # 2. YOLOv8 모델 로딩 (앙상블 방식)
             try:
                 print(f"🔥 [디버깅] YOLOv8 모델 로딩 시도")
-                # Central Hub에서 YOLOv8 체크포인트 경로 조회 (실제 파일명 사용)
-                yolo_path = self._get_model_path_from_central_hub('yolov8m-pose.pt')
-                print(f"🔥 [디버깅] YOLOv8 경로: {yolo_path}")
-                if yolo_path and yolo_path.exists():
-                    yolo_model = YOLOv8PoseModel(yolo_path)
-                    if yolo_model.load_model():
-                        self.ai_models['yolov8'] = yolo_model
-                        self.models_loading_status['yolov8'] = True
-                        loaded_count += 1
-                        self.logger.info("✅ YOLOv8 모델 로딩 성공")
-                        print(f"🔥 [디버깅] YOLOv8 모델 로딩 성공")
-                    else:
-                        print(f"🔥 [디버깅] YOLOv8 모델 로딩 실패")
+                yolo_model = self._load_yolov8_via_central_hub_improved()
+                if yolo_model:
+                    self.ai_models['yolov8'] = yolo_model
+                    self.models_loading_status['yolov8'] = True
+                    loaded_count += 1
+                    self.logger.info("✅ YOLOv8 모델 로딩 성공")
+                    print(f"🔥 [디버깅] YOLOv8 모델 로딩 성공")
                 else:
-                    print(f"🔥 [디버깅] YOLOv8 모델 파일 없음: {yolo_path}")
-                    # 대체 파일명 시도
-                    print(f"🔥 [디버깅] YOLOv8 대체 파일명 시도")
-                    yolo_path_alt = self._get_model_path_from_central_hub('yolov8n-pose.pt')
-                    print(f"🔥 [디버깅] YOLOv8 대체 경로: {yolo_path_alt}")
-                    if yolo_path_alt and yolo_path_alt.exists():
-                        yolo_model = YOLOv8PoseModel(yolo_path_alt)
-                        if yolo_model.load_model():
-                            self.ai_models['yolov8'] = yolo_model
-                            self.models_loading_status['yolov8'] = True
-                            loaded_count += 1
-                            self.logger.info("✅ YOLOv8 모델 로딩 성공 (대체 파일명)")
-                            print(f"🔥 [디버깅] YOLOv8 모델 로딩 성공 (대체 파일명)")
-                        else:
-                            print(f"🔥 [디버깅] YOLOv8 모델 로딩 실패 (대체 파일명)")
-                    else:
-                        print(f"🔥 [디버깅] YOLOv8 대체 모델 파일도 없음: {yolo_path_alt}")
+                    print(f"🔥 [디버깅] YOLOv8 모델 로딩 실패")
             except Exception as e:
                 self.logger.warning(f"⚠️ YOLOv8 모델 로딩 실패: {e}")
                 self.models_loading_status['loading_errors'].append(f"YOLOv8: {e}")
                 print(f"🔥 [디버깅] YOLOv8 모델 로딩 예외: {e}")
             
-            # OpenPose 모델 로딩
+            # 3. OpenPose 모델 로딩 (앙상블 방식)
             try:
                 print(f"🔥 [디버깅] OpenPose 모델 로딩 시도")
-                openpose_path = self._get_model_path_from_central_hub('body_pose_model.pth')
-                print(f"🔥 [디버깅] OpenPose 경로: {openpose_path}")
-                if openpose_path and openpose_path.exists():
-                    openpose_model = OpenPoseModel(openpose_path)
-                    if openpose_model.load_model():
-                        self.ai_models['openpose'] = openpose_model
-                        self.models_loading_status['openpose'] = True
-                        loaded_count += 1
-                        self.logger.info("✅ OpenPose 모델 로딩 성공")
-                        print(f"🔥 [디버깅] OpenPose 모델 로딩 성공")
-                    else:
-                        print(f"🔥 [디버깅] OpenPose 모델 로딩 실패")
+                openpose_model = self._load_openpose_via_central_hub_improved()
+                if openpose_model:
+                    self.ai_models['openpose'] = openpose_model
+                    self.models_loading_status['openpose'] = True
+                    loaded_count += 1
+                    self.logger.info("✅ OpenPose 모델 로딩 성공")
+                    print(f"🔥 [디버깅] OpenPose 모델 로딩 성공")
                 else:
-                    print(f"🔥 [디버깅] OpenPose 모델 파일 없음: {openpose_path}")
+                    print(f"🔥 [디버깅] OpenPose 모델 로딩 실패")
             except Exception as e:
                 self.logger.warning(f"⚠️ OpenPose 모델 로딩 실패: {e}")
                 self.models_loading_status['loading_errors'].append(f"OpenPose: {e}")
                 print(f"🔥 [디버깅] OpenPose 모델 로딩 예외: {e}")
             
-            # 🔥 새로운 아키텍처 OpenPose 모델 로딩
+            # 4. HRNet 모델 로딩 (앙상블 방식)
+            try:
+                print(f"🔥 [디버깅] HRNet 모델 로딩 시도")
+                hrnet_model = self._load_hrnet_via_central_hub_improved()
+                if hrnet_model:
+                    self.ai_models['hrnet'] = hrnet_model
+                    self.models_loading_status['hrnet'] = True
+                    loaded_count += 1
+                    self.logger.info("✅ HRNet 모델 로딩 성공")
+                    print(f"🔥 [디버깅] HRNet 모델 로딩 성공")
+                else:
+                    print(f"🔥 [디버깅] HRNet 모델 로딩 실패")
+            except Exception as e:
+                self.logger.warning(f"⚠️ HRNet 모델 로딩 실패: {e}")
+                self.models_loading_status['loading_errors'].append(f"HRNet: {e}")
+                print(f"🔥 [디버깅] HRNet 모델 로딩 예외: {e}")
+            
+            # 5. 새로운 아키텍처 OpenPose 모델 로딩
             try:
                 print(f"🔥 [디버깅] 새로운 아키텍처 OpenPose 모델 로딩 시도")
                 self.new_openpose_model = NewOpenPoseModel()
@@ -3480,6 +3470,7 @@ class PoseEstimationStep(BaseStepMixin):
                 print(f"🔥 [디버깅] 새로운 아키텍처 OpenPose 모델 로딩 성공")
                 
                 # 체크포인트가 있다면 로딩
+                openpose_path = self._get_model_path_from_central_hub('body_pose_model.pth')
                 if openpose_path and openpose_path.exists():
                     try:
                         checkpoint = torch.load(openpose_path, map_location='cpu')
@@ -3544,6 +3535,144 @@ class PoseEstimationStep(BaseStepMixin):
             self.logger.error("❌ 모든 포즈 모델 로딩 실패")
         
         return loaded_count
+    
+    def _load_mediapipe_via_central_hub_improved(self) -> Optional[Any]:
+        """MediaPipe 모델 로딩 (체크포인트 우선)"""
+        try:
+            # 1. 먼저 model_loader가 유효한지 확인
+            if self.model_loader is None:
+                self.logger.warning("⚠️ model_loader가 None입니다")
+                return None
+            
+            # 2. ModelLoader를 통해 MediaPipe 모델 로딩 (체크포인트 우선)
+            try:
+                mediapipe_model = MediaPoseModel()
+                if mediapipe_model.load_model():
+                    self.logger.info("✅ MediaPipe 모델 로딩 성공")
+                    return mediapipe_model
+                else:
+                    self.logger.error("❌ MediaPipe 모델 로딩 실패")
+                    return None
+            except Exception as e:
+                self.logger.error(f"❌ MediaPipe 모델 로딩 실패: {e}")
+                return None
+            
+        except Exception as e:
+            self.logger.error(f"❌ MediaPipe 모델 로딩 실패: {e}")
+            return None
+    
+    def _load_yolov8_via_central_hub_improved(self) -> Optional[Any]:
+        """YOLOv8 모델 로딩 (체크포인트 우선)"""
+        try:
+            # 1. 먼저 model_loader가 유효한지 확인
+            if self.model_loader is None:
+                self.logger.warning("⚠️ model_loader가 None입니다")
+                return None
+            
+            # 2. ModelLoader를 통해 YOLOv8 모델 로딩 (체크포인트 우선)
+            yolo_models = [
+                'yolov8m-pose.pt',
+                'yolov8n-pose.pt',
+                'yolov8s-pose.pt',
+                'yolov8l-pose.pt',
+                'yolov8x-pose.pt'
+            ]
+            
+            for model_name in yolo_models:
+                try:
+                    yolo_path = self._get_model_path_from_central_hub(model_name)
+                    if yolo_path and yolo_path.exists():
+                        yolo_model = YOLOv8PoseModel(yolo_path)
+                        if yolo_model.load_model():
+                            self.logger.info(f"✅ YOLOv8 모델 로딩 성공: {model_name}")
+                            return yolo_model
+                        else:
+                            self.logger.error(f"❌ YOLOv8 모델 로딩 실패: {model_name}")
+                            continue
+                except Exception as e:
+                    self.logger.error(f"❌ YOLOv8 모델 로딩 실패 ({model_name}): {e}")
+                    continue
+            
+            self.logger.error("❌ 모든 YOLOv8 체크포인트 로딩 실패")
+            return None
+            
+        except Exception as e:
+            self.logger.error(f"❌ YOLOv8 모델 로딩 실패: {e}")
+            return None
+    
+    def _load_openpose_via_central_hub_improved(self) -> Optional[Any]:
+        """OpenPose 모델 로딩 (체크포인트 우선)"""
+        try:
+            # 1. 먼저 model_loader가 유효한지 확인
+            if self.model_loader is None:
+                self.logger.warning("⚠️ model_loader가 None입니다")
+                return None
+            
+            # 2. ModelLoader를 통해 OpenPose 모델 로딩 (체크포인트 우선)
+            openpose_models = [
+                'body_pose_model.pth',
+                'openpose_model.pth',
+                'pose_model.pth'
+            ]
+            
+            for model_name in openpose_models:
+                try:
+                    openpose_path = self._get_model_path_from_central_hub(model_name)
+                    if openpose_path and openpose_path.exists():
+                        openpose_model = OpenPoseModel(openpose_path)
+                        if openpose_model.load_model():
+                            self.logger.info(f"✅ OpenPose 모델 로딩 성공: {model_name}")
+                            return openpose_model
+                        else:
+                            self.logger.error(f"❌ OpenPose 모델 로딩 실패: {model_name}")
+                            continue
+                except Exception as e:
+                    self.logger.error(f"❌ OpenPose 모델 로딩 실패 ({model_name}): {e}")
+                    continue
+            
+            self.logger.error("❌ 모든 OpenPose 체크포인트 로딩 실패")
+            return None
+            
+        except Exception as e:
+            self.logger.error(f"❌ OpenPose 모델 로딩 실패: {e}")
+            return None
+    
+    def _load_hrnet_via_central_hub_improved(self) -> Optional[Any]:
+        """HRNet 모델 로딩 (체크포인트 우선)"""
+        try:
+            # 1. 먼저 model_loader가 유효한지 확인
+            if self.model_loader is None:
+                self.logger.warning("⚠️ model_loader가 None입니다")
+                return None
+            
+            # 2. ModelLoader를 통해 HRNet 모델 로딩 (체크포인트 우선)
+            hrnet_models = [
+                'hrnet_w32_256x192.pth',
+                'hrnet_w48_256x192.pth',
+                'hrnet_pose_model.pth'
+            ]
+            
+            for model_name in hrnet_models:
+                try:
+                    hrnet_path = self._get_model_path_from_central_hub(model_name)
+                    if hrnet_path and hrnet_path.exists():
+                        hrnet_model = HRNetModel(hrnet_path)
+                        if hrnet_model.load_model():
+                            self.logger.info(f"✅ HRNet 모델 로딩 성공: {model_name}")
+                            return hrnet_model
+                        else:
+                            self.logger.error(f"❌ HRNet 모델 로딩 실패: {model_name}")
+                            continue
+                except Exception as e:
+                    self.logger.error(f"❌ HRNet 모델 로딩 실패 ({model_name}): {e}")
+                    continue
+            
+            self.logger.error("❌ 모든 HRNet 체크포인트 로딩 실패")
+            return None
+            
+        except Exception as e:
+            self.logger.error(f"❌ HRNet 모델 로딩 실패: {e}")
+            return None
     
     def _get_model_path_from_central_hub(self, model_name: str) -> Optional[Path]:
         """Central Hub를 통한 모델 경로 조회 + 직접 파일 시스템 검색"""

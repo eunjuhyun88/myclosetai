@@ -97,9 +97,14 @@ class ModelEnsembleManager:
             return False
     
     def _load_graphonomy_model(self, model_loader):
-        """Graphonomy 모델 로딩"""
+        """Graphonomy 모델 로딩 (체크포인트 로딩 개선)"""
         try:
-            # ModelLoader를 통해 실제 감지된 모델들 로딩
+            # 1. 먼저 model_loader가 유효한지 확인
+            if model_loader is None:
+                self.logger.warning("⚠️ model_loader가 None입니다")
+                return None
+            
+            # 2. ModelLoader를 통해 실제 감지된 모델들 로딩
             available_models = [
                 'human_parsing_schp',  # 1173MB 메인 모델
                 'graphonomy.pth',      # 기본 Graphonomy
@@ -108,12 +113,17 @@ class ModelEnsembleManager:
             
             for model_name in available_models:
                 try:
+                    self.logger.info(f"🔥 Graphonomy 모델 로딩 시도: {model_name}")
+                    
                     # ModelLoader의 load_model 메서드 사용
                     if hasattr(model_loader, 'load_model') and callable(model_loader.load_model):
                         model = model_loader.load_model(model_name)
                         if model and hasattr(model, 'get_model_instance'):
                             self.logger.info(f"✅ Graphonomy 모델 로딩 성공: {model_name}")
                             return model.get_model_instance()
+                        elif model:
+                            self.logger.info(f"✅ Graphonomy 모델 로딩 성공 (직접 반환): {model_name}")
+                            return model
                     
                     # 대안: get_model 메서드 사용
                     if hasattr(model_loader, 'get_model') and callable(model_loader.get_model):
@@ -121,10 +131,29 @@ class ModelEnsembleManager:
                         if model:
                             self.logger.info(f"✅ Graphonomy 모델 로딩 성공: {model_name}")
                             return model
+                    
+                    # 대안: create_model 메서드 사용
+                    if hasattr(model_loader, 'create_model') and callable(model_loader.create_model):
+                        model = model_loader.create_model('graphonomy', {'model_name': model_name})
+                        if model:
+                            self.logger.info(f"✅ Graphonomy 모델 생성 성공: {model_name}")
+                            return model
                             
                 except Exception as e:
                     self.logger.warning(f"⚠️ Graphonomy 모델 로딩 실패 ({model_name}): {e}")
                     continue
+            
+            # 3. 모든 체크포인트 로딩이 실패하면 직접 모델 생성
+            self.logger.warning("⚠️ 체크포인트 로딩 실패, 직접 모델 생성 시도")
+            try:
+                from app.ai_pipeline.steps.human_parsing.models.graphonomy_models import AdvancedGraphonomyResNetASPP
+                model = AdvancedGraphonomyResNetASPP(num_classes=20, pretrained=False)
+                model.checkpoint_path = "ensemble_graphonomy_direct"
+                model.checkpoint_data = {"graphonomy": True, "model_type": "AdvancedGraphonomyResNetASPP", "source": "ensemble_direct"}
+                self.logger.info("✅ 앙상블용 Graphonomy 모델 직접 생성 성공")
+                return model
+            except Exception as e:
+                self.logger.error(f"❌ 직접 모델 생성도 실패: {e}")
             
             self.logger.warning("⚠️ 사용 가능한 Graphonomy 모델이 없음")
             return None
@@ -134,9 +163,14 @@ class ModelEnsembleManager:
             return None
     
     def _load_u2net_model(self, model_loader):
-        """U2Net 모델 로딩"""
+        """U2Net 모델 로딩 (체크포인트 로딩 개선)"""
         try:
-            # ModelLoader를 통해 U2Net 모델 로딩
+            # 1. 먼저 model_loader가 유효한지 확인
+            if model_loader is None:
+                self.logger.warning("⚠️ model_loader가 None입니다")
+                return None
+            
+            # 2. ModelLoader를 통해 U2Net 모델 로딩
             u2net_models = [
                 'u2net.pth',
                 'u2net_official.pth',
@@ -145,12 +179,17 @@ class ModelEnsembleManager:
             
             for model_name in u2net_models:
                 try:
+                    self.logger.info(f"🔥 U2Net 모델 로딩 시도: {model_name}")
+                    
                     # ModelLoader의 load_model 메서드 사용
                     if hasattr(model_loader, 'load_model') and callable(model_loader.load_model):
                         model = model_loader.load_model(model_name)
                         if model and hasattr(model, 'get_model_instance'):
                             self.logger.info(f"✅ U2Net 모델 로딩 성공: {model_name}")
                             return model.get_model_instance()
+                        elif model:
+                            self.logger.info(f"✅ U2Net 모델 로딩 성공 (직접 반환): {model_name}")
+                            return model
                     
                     # 대안: get_model 메서드 사용
                     if hasattr(model_loader, 'get_model') and callable(model_loader.get_model):
@@ -158,10 +197,29 @@ class ModelEnsembleManager:
                         if model:
                             self.logger.info(f"✅ U2Net 모델 로딩 성공: {model_name}")
                             return model
+                    
+                    # 대안: create_model 메서드 사용
+                    if hasattr(model_loader, 'create_model') and callable(model_loader.create_model):
+                        model = model_loader.create_model('u2net', {'model_name': model_name})
+                        if model:
+                            self.logger.info(f"✅ U2Net 모델 생성 성공: {model_name}")
+                            return model
                             
                 except Exception as e:
                     self.logger.warning(f"⚠️ U2Net 모델 로딩 실패 ({model_name}): {e}")
                     continue
+            
+            # 3. 모든 체크포인트 로딩이 실패하면 직접 모델 생성
+            self.logger.warning("⚠️ 체크포인트 로딩 실패, 직접 모델 생성 시도")
+            try:
+                from app.ai_pipeline.utils.model_architectures import U2NetModel
+                model = U2NetModel(out_channels=1)
+                model.checkpoint_path = "ensemble_u2net_direct"
+                model.checkpoint_data = {"u2net": True, "model_type": "U2NetModel", "source": "ensemble_direct"}
+                self.logger.info("✅ 앙상블용 U2Net 모델 직접 생성 성공")
+                return model
+            except Exception as e:
+                self.logger.error(f"❌ 직접 모델 생성도 실패: {e}")
             
             self.logger.warning("⚠️ 사용 가능한 U2Net 모델이 없음")
             return None

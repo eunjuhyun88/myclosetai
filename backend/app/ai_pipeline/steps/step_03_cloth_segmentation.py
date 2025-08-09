@@ -52,6 +52,60 @@ warnings.filterwarnings('ignore', category=ImportWarning)
 # 최상단에 추가
 logger = logging.getLogger(__name__)
 
+# 🔥 PyTorch 로딩 최적화 - 수정
+try:
+    from fix_pytorch_loading import apply_pytorch_patch
+    apply_pytorch_patch()
+except ImportError:
+    logger.warning("⚠️ fix_pytorch_loading 모듈 없음 - 기본 PyTorch 로딩 사용")
+except Exception as e:
+    logger.warning(f"⚠️ PyTorch 로딩 패치 실패: {e}")
+
+# 🔥 PyTorch 통합 import - 중복 제거
+TORCH_AVAILABLE = False
+MPS_AVAILABLE = False
+try:
+    import torch
+    import torch.nn as nn
+    import torch.nn.functional as F
+    from torchvision import transforms
+    TORCH_AVAILABLE = True
+    
+    if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+        MPS_AVAILABLE = True
+        
+    logger.info(f"🔥 PyTorch {torch.__version__} 로드 완료")
+    if MPS_AVAILABLE:
+        logger.info("🍎 MPS 사용 가능")
+except ImportError:
+    logger.error("❌ PyTorch 필수 - 설치 필요")
+    if EXCEPTIONS_AVAILABLE:
+        error = ModelLoadingError("PyTorch 필수 라이브러리 로딩 실패", ErrorCodes.MODEL_LOADING_FAILED)
+        track_exception(error, {'library': 'torch'}, 3)
+        raise error
+    else:
+        raise
+
+# model_architectures에서 올바른 모델들 임포트
+try:
+    from ..utils.model_architectures import (
+        SAMModel, U2NetModel, DeepLabV3PlusModel
+    )
+    MODEL_ARCHITECTURES_AVAILABLE = True
+except ImportError:
+    try:
+        # 절대 경로로 재시도
+        from app.ai_pipeline.utils.model_architectures import (
+            SAMModel, U2NetModel, DeepLabV3PlusModel
+        )
+        MODEL_ARCHITECTURES_AVAILABLE = True
+    except ImportError:
+        # 임포트 실패 시 기본 모델 사용
+        MODEL_ARCHITECTURES_AVAILABLE = False
+        SAMModel = None
+        U2NetModel = None
+        DeepLabV3PlusModel = None
+
 def detect_m3_max():
     """M3 Max 감지"""
     try:
@@ -68,15 +122,6 @@ def detect_m3_max():
 
 IS_M3_MAX = detect_m3_max()
 MEMORY_GB = 16.0
-
-# 🔥 PyTorch 로딩 최적화 - 수정
-try:
-    from fix_pytorch_loading import apply_pytorch_patch
-    apply_pytorch_patch()
-except ImportError:
-    logger.warning("⚠️ fix_pytorch_loading 모듈 없음 - 기본 PyTorch 로딩 사용")
-except Exception as e:
-    logger.warning(f"⚠️ PyTorch 로딩 패치 실패: {e}")
 
 # BaseStepMixin 동적 import (순환참조 완전 방지) - ClothSegmentation용
 def get_base_step_mixin_class():
@@ -429,11 +474,11 @@ if BaseStepMixin is None:
                 
                 # GPU 메모리 정리
                 try:
-                    import torch
-                    if torch.cuda.is_available():
-                        torch.cuda.empty_cache()
-                    elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
-                        torch.mps.empty_cache()
+                    if TORCH_AVAILABLE:
+                        if torch.cuda.is_available():
+                            torch.cuda.empty_cache()
+                        elif MPS_AVAILABLE:
+                            torch.mps.empty_cache()
                 except:
                     pass
                 
@@ -597,6 +642,7 @@ def _get_service_from_central_hub(service_key: str):
 
 
 # PyTorch (필수)
+# 🔥 PyTorch 통합 import - 중복 제거
 TORCH_AVAILABLE = False
 MPS_AVAILABLE = False
 try:
@@ -621,35 +667,35 @@ except ImportError:
     else:
         raise
 
-# PIL (필수)
-PIL_AVAILABLE = False
-try:
-    from PIL import Image, ImageEnhance, ImageFilter, ImageOps, ImageDraw
-    PIL_AVAILABLE = True
-    logger.info("🖼️ PIL 로드 완료")
-except ImportError:
-    logger.error("❌ PIL 필수 - 설치 필요")
-    if EXCEPTIONS_AVAILABLE:
-        error = ModelLoadingError("PIL 필수 라이브러리 로딩 실패", ErrorCodes.MODEL_LOADING_FAILED)
-        track_exception(error, {'library': 'pil'}, 3)
-        raise error
-    else:
-        raise
+# PIL (필수) - common_imports에서 이미 로드됨
+if not PIL_AVAILABLE:
+    try:
+        from PIL import Image, ImageEnhance, ImageFilter, ImageOps, ImageDraw
+        PIL_AVAILABLE = True
+        logger.info("🖼️ PIL 로드 완료")
+    except ImportError:
+        logger.error("❌ PIL 필수 - 설치 필요")
+        if EXCEPTIONS_AVAILABLE:
+            error = ModelLoadingError("PIL 필수 라이브러리 로딩 실패", ErrorCodes.MODEL_LOADING_FAILED)
+            track_exception(error, {'library': 'pil'}, 3)
+            raise error
+        else:
+            raise
 
-# NumPy (필수)
-NUMPY_AVAILABLE = False
-try:
-    import numpy as np
-    NUMPY_AVAILABLE = True
-    logger.info("📊 NumPy 로드 완료")
-except ImportError:
-    logger.error("❌ NumPy 필수 - 설치 필요")
-    if EXCEPTIONS_AVAILABLE:
-        error = ModelLoadingError("NumPy 필수 라이브러리 로딩 실패", ErrorCodes.MODEL_LOADING_FAILED)
-        track_exception(error, {'library': 'numpy'}, 3)
-        raise error
-    else:
-        raise
+# NumPy (필수) - common_imports에서 이미 로드됨
+if not NUMPY_AVAILABLE:
+    try:
+        import numpy as np
+        NUMPY_AVAILABLE = True
+        logger.info("📊 NumPy 로드 완료")
+    except ImportError:
+        logger.error("❌ NumPy 필수 - 설치 필요")
+        if EXCEPTIONS_AVAILABLE:
+            error = ModelLoadingError("NumPy 필수 라이브러리 로딩 실패", ErrorCodes.MODEL_LOADING_FAILED)
+            track_exception(error, {'library': 'numpy'}, 3)
+            raise error
+        else:
+            raise
 
 # SAM (선택적)
 SAM_AVAILABLE = False
@@ -696,15 +742,16 @@ except ImportError:
 except Exception as e:
     logger.warning(f"⚠️ Scikit-image 로드 실패: {e}")
 
-# Torchvision
-TORCHVISION_AVAILABLE = False
-try:
-    import torchvision
-    from torchvision import models, transforms
-    TORCHVISION_AVAILABLE = True
-    logger.info("🤖 Torchvision 로드 완료")
-except ImportError:
-    logger.warning("⚠️ Torchvision 없음 - 일부 기능 제한")
+# Torchvision - PyTorch import에서 이미 로드됨
+TORCHVISION_AVAILABLE = TORCH_AVAILABLE
+if TORCHVISION_AVAILABLE:
+    try:
+        import torchvision
+        from torchvision import models
+        logger.info("🤖 Torchvision 로드 완료")
+    except ImportError:
+        logger.warning("⚠️ Torchvision 없음 - 일부 기능 제한")
+        TORCHVISION_AVAILABLE = False
 
 # ==============================================
 # 🔥 섹션 4: 의류 세그멘테이션 데이터 구조
@@ -1368,30 +1415,53 @@ class ClothSegmentationStep(BaseStepMixin):
             return self._fallback_initialization()
     
     def _load_segmentation_models_via_central_hub(self):
-        """Central Hub를 통한 Segmentation 모델 로딩"""
+        """Central Hub를 통한 Segmentation 모델 로딩 (체크포인트 우선)"""
         try:
             if self.model_loader:  # Central Hub에서 자동 주입됨
-                logger.info("🔄 Central Hub ModelLoader를 통한 AI 모델 로딩...")
+                logger.info("🔄 Central Hub ModelLoader를 통한 AI 모델 로딩 (체크포인트 우선)...")
                 
-                # 🔥 1. U2Net 모델 로딩 (우선순위 1 - M3 Max 안전)
-                self._load_u2net_model()
+                # 🔥 1. U2Net 모델 로딩 (우선순위 1 - 체크포인트 우선)
+                u2net_model = self._load_u2net_via_central_hub_improved()
+                if u2net_model:
+                    self.ai_models['u2net'] = u2net_model
+                    self.segmentation_models['u2net'] = u2net_model
+                    self.models_loading_status['u2net'] = True
+                    logger.info("✅ U2Net 모델 로딩 성공")
+                else:
+                    logger.error("❌ U2Net 모델 로딩 실패")
                 
-                # 🔥 2. SAM 모델 로딩 (우선순위 2 - 메모리 여유시)
-                self._load_sam_model()
+                # 🔥 2. SAM 모델 로딩 (우선순위 2 - 체크포인트 우선)
+                sam_model = self._load_sam_via_central_hub_improved()
+                if sam_model:
+                    self.ai_models['sam'] = sam_model
+                    self.segmentation_models['sam'] = sam_model
+                    self.models_loading_status['sam'] = True
+                    logger.info("✅ SAM 모델 로딩 성공")
+                else:
+                    logger.error("❌ SAM 모델 로딩 실패")
                 
-                # 🔥 3. DeepLabV3+ 모델 로딩 (나중에 - 현재 비활성화)
-                # self._load_deeplabv3plus_model()
+                # 🔥 3. DeepLabV3+ 모델 로딩 (우선순위 3 - 체크포인트 우선)
+                deeplabv3_model = self._load_deeplabv3_via_central_hub_improved()
+                if deeplabv3_model:
+                    self.ai_models['deeplabv3plus'] = deeplabv3_model
+                    self.segmentation_models['deeplabv3plus'] = deeplabv3_model
+                    self.models_loading_status['deeplabv3plus'] = True
+                    logger.info("✅ DeepLabV3+ 모델 로딩 성공")
+                else:
+                    logger.error("❌ DeepLabV3+ 모델 로딩 실패")
                 
                 # 🔥 4. 체크포인트 경로 탐지
                 self._detect_model_paths()
                 
             else:
-                logger.warning("⚠️ Central Hub ModelLoader 없음 - 폴백 모델 생성")
-                self._create_fallback_models()
+                logger.error("❌ Central Hub ModelLoader 없음")
+                return False
                 
         except Exception as e:
             logger.error(f"❌ Central Hub 모델 로딩 실패: {e}")
-            self._create_fallback_models()
+            return False
+        
+        return True
     
     def _load_deeplabv3plus_model(self):
         """DeepLabV3+ 모델 로딩 (우선순위 1) - Central Hub ModelLoader 사용"""
@@ -1412,6 +1482,8 @@ class ClothSegmentationStep(BaseStepMixin):
                         self.model_paths['deeplabv3plus'] = model_path
                         self.logger.info(f"✅ DeepLabV3+ 로딩 완료: {model_path}")
                         return
+                    else:
+                        self.logger.error("❌ DeepLabV3+ 모델 로드 실패")
             
             # 폴백: 직접 경로 탐지
             checkpoint_paths = [
@@ -1422,14 +1494,25 @@ class ClothSegmentationStep(BaseStepMixin):
             
             for model_path in checkpoint_paths:
                 if os.path.exists(model_path):
-                    deeplabv3_model = RealDeepLabV3PlusModel(model_path, self.device)
-                    if deeplabv3_model.load():
-                        self.ai_models['deeplabv3plus'] = deeplabv3_model
-                        self.segmentation_models['deeplabv3plus'] = deeplabv3_model
-                        self.models_loading_status['deeplabv3plus'] = True
-                        self.model_paths['deeplabv3plus'] = model_path
-                        self.logger.info(f"✅ DeepLabV3+ 로딩 완료: {model_path}")
-                        return
+                    # model_architectures.py의 DeepLabV3PlusModel 사용
+                    if MODEL_ARCHITECTURES_AVAILABLE and DeepLabV3PlusModel is not None:
+                        deeplabv3_model = DeepLabV3PlusModel()
+                        deeplabv3_model = deeplabv3_model.to(self.device)
+                        self.logger.info("🔄 DeepLabV3PlusModel 인스턴스 생성 완료 (model_architectures)")
+                    else:
+                        deeplabv3_model = RealDeepLabV3PlusModel(model_path, self.device)
+                        self.logger.info("🔄 RealDeepLabV3PlusModel 인스턴스 생성 완료 (폴백)")
+                    
+                    if hasattr(deeplabv3_model, 'load') and callable(deeplabv3_model.load):
+                        if deeplabv3_model.load():
+                            self.ai_models['deeplabv3plus'] = deeplabv3_model
+                            self.segmentation_models['deeplabv3plus'] = deeplabv3_model
+                            self.models_loading_status['deeplabv3plus'] = True
+                            self.model_paths['deeplabv3plus'] = model_path
+                            self.logger.info(f"✅ DeepLabV3+ 로딩 완료: {model_path}")
+                            return
+                        else:
+                            self.logger.error("❌ DeepLabV3+ 모델 로드 실패 (폴백)")
             
             self.logger.warning("⚠️ DeepLabV3+ 모델 파일을 찾을 수 없음")
                 
@@ -1466,18 +1549,28 @@ class ClothSegmentationStep(BaseStepMixin):
                 print(f"🔥 [디버깅] 조회된 SAM 경로: {model_path}")
                 if model_path and os.path.exists(model_path):
                     print(f"🔥 [디버깅] SAM 모델 파일 발견: {model_path}")
-                    sam_model = RealSAMModel(model_path, self.device)
-                    print(f"🔥 [디버깅] SAM 모델 인스턴스 생성 완료")
-                    if sam_model.load():
-                        self.ai_models['sam_huge'] = sam_model
-                        self.segmentation_models['sam_huge'] = sam_model
-                        self.models_loading_status['sam_huge'] = True
-                        self.model_paths['sam_huge'] = model_path
-                        self.logger.info(f"✅ SAM 로딩 완료: {model_path}")
-                        print(f"🔥 [디버깅] SAM 로딩 완료")
-                        return
+                    # model_architectures.py의 SAMModel 사용
+                    if MODEL_ARCHITECTURES_AVAILABLE and SAMModel is not None:
+                        sam_model = SAMModel()
+                        sam_model = sam_model.to(self.device)
+                        print(f"🔥 [디버깅] SAMModel 인스턴스 생성 완료 (model_architectures)")
                     else:
-                        print(f"🔥 [디버깅] SAM 모델 로드 실패")
+                        sam_model = RealSAMModel(model_path, self.device)
+                        print(f"🔥 [디버깅] RealSAMModel 인스턴스 생성 완료 (폴백)")
+                    
+                    if hasattr(sam_model, 'load') and callable(sam_model.load):
+                        if sam_model.load():
+                            self.ai_models['sam_huge'] = sam_model
+                            self.segmentation_models['sam_huge'] = sam_model
+                            self.models_loading_status['sam_huge'] = True
+                            self.model_paths['sam_huge'] = model_path
+                            self.logger.info(f"✅ SAM 로딩 완료: {model_path}")
+                            print(f"🔥 [디버깅] SAM 로딩 완료")
+                            return
+                        else:
+                            print(f"🔥 [디버깅] SAM 모델 로드 실패")
+                    else:
+                        print(f"🔥 [디버깅] SAM 모델에 load 메서드가 없음")
                 else:
                     print(f"🔥 [디버깅] SAM 모델 파일이 존재하지 않음: {model_path}")
             else:
@@ -1538,21 +1631,33 @@ class ClothSegmentationStep(BaseStepMixin):
                 if model_path and os.path.exists(model_path):
                     self.logger.info(f"✅ U2Net 모델 파일 발견: {model_path}")
                     print(f"🔥 [디버깅] U2Net 모델 파일 발견: {model_path}")
-                    u2net_model = RealU2NetClothModel(model_path, self.device)
-                    self.logger.info("🔄 U2Net 모델 인스턴스 생성 완료")
-                    print(f"🔥 [디버깅] U2Net 모델 인스턴스 생성 완료")
                     
-                    if u2net_model.load():
-                        self.ai_models['u2net_cloth'] = u2net_model
-                        self.segmentation_models['u2net_cloth'] = u2net_model
-                        self.models_loading_status['u2net_cloth'] = True
-                        self.model_paths['u2net_cloth'] = model_path
-                        self.logger.info(f"✅ U2Net 로딩 완료: {model_path}")
-                        print(f"🔥 [디버깅] U2Net 로딩 완료")
-                        return
+                    # model_architectures.py의 U2NetModel 사용
+                    if MODEL_ARCHITECTURES_AVAILABLE and U2NetModel is not None:
+                        u2net_model = U2NetModel()
+                        u2net_model = u2net_model.to(self.device)
+                        self.logger.info("🔄 U2NetModel 인스턴스 생성 완료 (model_architectures)")
+                        print(f"🔥 [디버깅] U2NetModel 인스턴스 생성 완료 (model_architectures)")
                     else:
-                        self.logger.error("❌ U2Net 모델 로드 실패")
-                        print(f"🔥 [디버깅] U2Net 모델 로드 실패")
+                        u2net_model = RealU2NetClothModel(model_path, self.device)
+                        self.logger.info("🔄 RealU2NetClothModel 인스턴스 생성 완료 (폴백)")
+                        print(f"🔥 [디버깅] RealU2NetClothModel 인스턴스 생성 완료 (폴백)")
+                    
+                    if hasattr(u2net_model, 'load') and callable(u2net_model.load):
+                        if u2net_model.load():
+                            self.ai_models['u2net_cloth'] = u2net_model
+                            self.segmentation_models['u2net_cloth'] = u2net_model
+                            self.models_loading_status['u2net_cloth'] = True
+                            self.model_paths['u2net_cloth'] = model_path
+                            self.logger.info(f"✅ U2Net 로딩 완료: {model_path}")
+                            print(f"🔥 [디버깅] U2Net 로딩 완료")
+                            return
+                        else:
+                            self.logger.error("❌ U2Net 모델 로드 실패")
+                            print(f"🔥 [디버깅] U2Net 모델 로드 실패")
+                    else:
+                        self.logger.error("❌ U2Net 모델에 load 메서드가 없음")
+                        print(f"🔥 [디버깅] U2Net 모델에 load 메서드가 없음")
                 else:
                     self.logger.warning(f"⚠️ U2Net 모델 파일이 존재하지 않음: {model_path}")
                     print(f"🔥 [디버깅] U2Net 모델 파일이 존재하지 않음: {model_path}")
@@ -1601,6 +1706,126 @@ class ClothSegmentationStep(BaseStepMixin):
             self.logger.error(f"❌ U2Net 모델 로딩 실패: {e}")
             print(f"🔥 [디버깅] U2Net 모델 로딩 실패: {e}")
             self.models_loading_status['loading_errors'].append(f"U2Net: {e}")
+    
+    def _load_u2net_via_central_hub_improved(self) -> Optional[Any]:
+        """U2Net 모델 로딩 (체크포인트 우선)"""
+        try:
+            # 1. 먼저 model_loader가 유효한지 확인
+            if self.model_loader is None:
+                self.logger.warning("⚠️ model_loader가 None입니다")
+                return None
+            
+            # 2. ModelLoader를 통해 U2Net 모델 로딩 (체크포인트 우선)
+            u2net_models = [
+                'u2net',
+                'u2net_cloth',
+                'u2net_cloth_segmentation'
+            ]
+            
+            for model_name in u2net_models:
+                try:
+                    model_path = self.model_loader.get_model_path(model_name, step_name='step_03_cloth_segmentation')
+                    if model_path and os.path.exists(model_path):
+                        if MODEL_ARCHITECTURES_AVAILABLE and U2NetModel is not None:
+                            u2net_model = U2NetModel()
+                            u2net_model = u2net_model.to(self.device)
+                            self.logger.info(f"✅ U2Net 모델 로딩 성공: {model_name}")
+                            return u2net_model
+                        else:
+                            u2net_model = RealU2NetClothModel(model_path, self.device)
+                            if u2net_model.load():
+                                self.logger.info(f"✅ U2Net 모델 로딩 성공: {model_name}")
+                                return u2net_model
+                except Exception as e:
+                    self.logger.error(f"❌ U2Net 모델 로딩 실패 ({model_name}): {e}")
+                    continue
+            
+            self.logger.error("❌ 모든 U2Net 체크포인트 로딩 실패")
+            return None
+            
+        except Exception as e:
+            self.logger.error(f"❌ U2Net 모델 로딩 실패: {e}")
+            return None
+    
+    def _load_sam_via_central_hub_improved(self) -> Optional[Any]:
+        """SAM 모델 로딩 (체크포인트 우선)"""
+        try:
+            # 1. 먼저 model_loader가 유효한지 확인
+            if self.model_loader is None:
+                self.logger.warning("⚠️ model_loader가 None입니다")
+                return None
+            
+            # 2. ModelLoader를 통해 SAM 모델 로딩 (체크포인트 우선)
+            sam_models = [
+                'sam_vit_h_4b8939',
+                'sam_huge',
+                'sam_vit_h'
+            ]
+            
+            for model_name in sam_models:
+                try:
+                    model_path = self.model_loader.get_model_path(model_name, step_name='step_03_cloth_segmentation')
+                    if model_path and os.path.exists(model_path):
+                        if MODEL_ARCHITECTURES_AVAILABLE and SAMModel is not None:
+                            sam_model = SAMModel()
+                            sam_model = sam_model.to(self.device)
+                            self.logger.info(f"✅ SAM 모델 로딩 성공: {model_name}")
+                            return sam_model
+                        else:
+                            sam_model = RealSAMModel(model_path, self.device)
+                            if sam_model.load():
+                                self.logger.info(f"✅ SAM 모델 로딩 성공: {model_name}")
+                                return sam_model
+                except Exception as e:
+                    self.logger.error(f"❌ SAM 모델 로딩 실패 ({model_name}): {e}")
+                    continue
+            
+            self.logger.error("❌ 모든 SAM 체크포인트 로딩 실패")
+            return None
+            
+        except Exception as e:
+            self.logger.error(f"❌ SAM 모델 로딩 실패: {e}")
+            return None
+    
+    def _load_deeplabv3_via_central_hub_improved(self) -> Optional[Any]:
+        """DeepLabV3+ 모델 로딩 (체크포인트 우선)"""
+        try:
+            # 1. 먼저 model_loader가 유효한지 확인
+            if self.model_loader is None:
+                self.logger.warning("⚠️ model_loader가 None입니다")
+                return None
+            
+            # 2. ModelLoader를 통해 DeepLabV3+ 모델 로딩 (체크포인트 우선)
+            deeplabv3_models = [
+                'deeplabv3_resnet101_ultra',
+                'deeplabv3plus',
+                'deeplabv3_plus'
+            ]
+            
+            for model_name in deeplabv3_models:
+                try:
+                    model_path = self.model_loader.get_model_path(model_name, step_name='step_03_cloth_segmentation')
+                    if model_path and os.path.exists(model_path):
+                        if MODEL_ARCHITECTURES_AVAILABLE and DeepLabV3PlusModel is not None:
+                            deeplabv3_model = DeepLabV3PlusModel()
+                            deeplabv3_model = deeplabv3_model.to(self.device)
+                            self.logger.info(f"✅ DeepLabV3+ 모델 로딩 성공: {model_name}")
+                            return deeplabv3_model
+                        else:
+                            deeplabv3_model = RealDeepLabV3PlusModel(model_path, self.device)
+                            if deeplabv3_model.load():
+                                self.logger.info(f"✅ DeepLabV3+ 모델 로딩 성공: {model_name}")
+                                return deeplabv3_model
+                except Exception as e:
+                    self.logger.error(f"❌ DeepLabV3+ 모델 로딩 실패 ({model_name}): {e}")
+                    continue
+            
+            self.logger.error("❌ 모든 DeepLabV3+ 체크포인트 로딩 실패")
+            return None
+            
+        except Exception as e:
+            self.logger.error(f"❌ DeepLabV3+ 모델 로딩 실패: {e}")
+            return None
     
     def _detect_model_paths(self):
         """체크포인트 경로 자동 탐지"""
@@ -3981,33 +4206,46 @@ logger.info("   🔥 실제 AI 추론 완전 가능 (Mock 제거)")
 logger.info("=" * 120)
 logger.info("🎉 ClothSegmentationStep Central Hub DI Container v7.0 완전 연동 완료!")
 
-# ==============================================
-# 🔥 메인 실행부
-# ==============================================
-
-if __name__ == "__main__":
-    print("=" * 80)
-    print("🎯 MyCloset AI Step 03 - Central Hub DI Container v7.0 완전 연동")
-    print("=" * 80)
-    
+# 🔥 메모리 관리 및 에러 처리 개선
+def cleanup_memory():
+    """메모리 정리 함수"""
     try:
-        # 테스트 실행
-        test_central_hub_compatibility()
-        print()
-        test_cloth_segmentation_ai()
-        
+        gc.collect()
+        if TORCH_AVAILABLE:
+            try:
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+                elif MPS_AVAILABLE:
+                    torch.mps.empty_cache()
+            except Exception as mem_error:
+                logger.warning(f"⚠️ PyTorch 메모리 정리 실패: {mem_error}")
     except Exception as e:
-        print(f"❌ 테스트 실행 실패: {e}")
-    
-    print("\n" + "=" * 80)
-    print("✨ ClothSegmentationStep Central Hub DI Container v7.0 완전 연동 테스트 완료")
-    print("🔥 50% 코드 단축 + 실제 AI 추론 완전 복원")
-    print("🧠 DeepLabV3+, SAM, U2Net 실제 모델 완전 지원")
-    print("🎨 20개 의류 카테고리 다중 클래스 세그멘테이션")
-    print("⚡ BaseStepMixin v20.0 완전 호환")
-    print("🚀 Central Hub DI Container v7.0 완전 연동")
-    print("🍎 M3 Max 128GB 메모리 최적화")
-    print("=" * 80)
+        logger.warning(f"⚠️ 메모리 정리 실패: {e}")
+
+def safe_torch_operation(operation_func, *args, **kwargs):
+    """안전한 PyTorch 작업 실행"""
+    try:
+        if not TORCH_AVAILABLE:
+            raise RuntimeError("PyTorch가 사용 불가능합니다")
+        return operation_func(*args, **kwargs)
+    except Exception as e:
+        logger.error(f"❌ PyTorch 작업 실패: {e}")
+        if EXCEPTIONS_AVAILABLE:
+            track_exception(e, {'operation': operation_func.__name__}, 2)
+        raise
+
+# 🔥 파일 끝 표시
+if __name__ == "__main__":
+    logger.info("🔥 Step 03 Cloth Segmentation 모듈 로드 완료")
+    logger.info(f"📊 PyTorch 사용 가능: {TORCH_AVAILABLE}")
+    logger.info(f"🍎 MPS 사용 가능: {MPS_AVAILABLE}")
+    logger.info(f"🖼️ PIL 사용 가능: {PIL_AVAILABLE}")
+    logger.info(f"📊 NumPy 사용 가능: {NUMPY_AVAILABLE}")
+    logger.info(f"🔬 SciPy 사용 가능: {SCIPY_AVAILABLE}")
+    logger.info(f"🔬 Scikit-image 사용 가능: {SKIMAGE_AVAILABLE}")
+    logger.info(f"🎯 SAM 사용 가능: {SAM_AVAILABLE}")
+    logger.info(f"🤖 Torchvision 사용 가능: {TORCHVISION_AVAILABLE}")
+    logger.info(f"🔥 DenseCRF 사용 가능: {DENSECRF_AVAILABLE}")
 
 # ==============================================
 # 🔥 핵심 AI 알고리즘 - 실제 신경망 구조 완전 구현
@@ -4647,10 +4885,11 @@ class ClothFeatureExtractor(nn.Module):
 # 🔥 섹션 6: 고급 후처리 알고리즘들 (원본 완전 복원)
 # ==============================================
 
-class RealDeepLabV3PlusModel:
+class RealDeepLabV3PlusModel(nn.Module):
     """실제 DeepLabV3+ 모델 (의류 세그멘테이션 특화) - 완전 구현"""
     
     def __init__(self, model_path: str, device: str = "cpu"):
+        super().__init__()  # nn.Module 초기화
         self.model_path = model_path
         self.device = device
         self.model = None
@@ -4774,6 +5013,19 @@ class RealDeepLabV3PlusModel:
         except Exception as e:
             logger.error(f"❌ DeepLabV3+ 모델 로드 실패: {e}")
             return False
+
+    def forward(self, x, y=None, z=None):
+        """PyTorch nn.Module 표준 forward 메서드"""
+        # 텐서를 numpy로 변환
+        if isinstance(x, torch.Tensor):
+            x = x.detach().cpu().numpy()
+        if y is not None and isinstance(y, torch.Tensor):
+            y = y.detach().cpu().numpy()
+        if z is not None and isinstance(z, torch.Tensor):
+            z = z.detach().cpu().numpy()
+        
+        # predict 메서드 호출
+        return self.predict(x)
 
     def predict(self, image: np.ndarray) -> Dict[str, Any]:
         """DeepLabV3+ 예측 실행 - 완전 구현"""
@@ -4939,10 +5191,11 @@ class RealDeepLabV3PlusModel:
             logger.warning(f"의류 특징 추출 실패: {e}")
             return {}
 
-class RealU2NetClothModel:
+class RealU2NetClothModel(nn.Module):
     """실제 U2Net 의류 특화 모델 - 완전 구현"""
     
     def __init__(self, model_path: str, device: str = "cpu"):
+        super().__init__()  # nn.Module 초기화
         self.model_path = model_path
         self.device = device
         self.model = None
@@ -5595,10 +5848,11 @@ class RealU2NetClothModel:
             logger.warning(f"U2Net 신뢰도 계산 실패: {e}")
             return 0.5
 
-class RealSAMModel:
+class RealSAMModel(nn.Module):
     """실제 SAM AI 모델 - 완전 구현"""
     
     def __init__(self, model_path: str, device: str = "cpu"):
+        super().__init__()  # nn.Module 초기화
         self.model_path = model_path
         # M3 Max 환경에서는 강제로 CPU 사용
         if IS_M3_MAX:
@@ -5651,16 +5905,24 @@ class RealSAMModel:
                 
                 # 메모리 제한 설정
                 try:
-                    import torch
-                    if hasattr(torch.mps, 'set_per_process_memory_fraction'):
-                        torch.mps.set_per_process_memory_fraction(0.5)  # 50%로 제한
-                        print(f"🔥 [디버깅] MPS 메모리 제한 설정: 50%")
+                    if TORCH_AVAILABLE and MPS_AVAILABLE:
+                        if hasattr(torch.mps, 'set_per_process_memory_fraction'):
+                            torch.mps.set_per_process_memory_fraction(0.5)  # 50%로 제한
+                            print(f"🔥 [디버깅] MPS 메모리 제한 설정: 50%")
                 except:
                     print(f"🔥 [디버깅] MPS 메모리 제한 설정 실패")
                     pass
                 
                 # 추가 메모리 정리
                 gc.collect()
+                if TORCH_AVAILABLE:
+                    try:
+                        if torch.cuda.is_available():
+                            torch.cuda.empty_cache()
+                        elif MPS_AVAILABLE:
+                            torch.mps.empty_cache()
+                    except:
+                        pass
                 import time
                 time.sleep(1)  # 메모리 정리를 위한 대기
                 print(f"🔥 [디버깅] M3 Max 메모리 정리 완료")
@@ -5727,6 +5989,8 @@ class RealSAMModel:
             except Exception as model_error:
                 logger.error(f"❌ SAM 모델 빌드 실패: {model_error}")
                 logger.error(f"❌ 에러 타입: {type(model_error).__name__}")
+                if EXCEPTIONS_AVAILABLE:
+                    track_exception(model_error, {'model': 'sam', 'operation': 'build'}, 2)
                 import traceback
                 logger.error(f"❌ 상세 에러: {traceback.format_exc()}")
                 print(f"🔥 [디버깅] SAM 모델 빌드 실패: {model_error}")
@@ -5736,11 +6000,26 @@ class RealSAMModel:
         except Exception as e:
             logger.error(f"❌ SAM 모델 로드 실패: {e}")
             logger.error(f"❌ 에러 타입: {type(e).__name__}")
+            if EXCEPTIONS_AVAILABLE:
+                track_exception(e, {'model': 'sam', 'operation': 'load'}, 2)
             import traceback
             logger.error(f"❌ 상세 에러: {traceback.format_exc()}")
             print(f"🔥 [디버깅] SAM 모델 로드 실패: {e}")
             print(f"🔥 [디버깅] 에러 타입: {type(e).__name__}")
             return False
+    
+    def forward(self, x, y=None, z=None):
+        """PyTorch nn.Module 표준 forward 메서드"""
+        # 텐서를 numpy로 변환
+        if isinstance(x, torch.Tensor):
+            x = x.detach().cpu().numpy()
+        if y is not None and isinstance(y, torch.Tensor):
+            y = y.detach().cpu().numpy()
+        if z is not None and isinstance(z, torch.Tensor):
+            z = z.detach().cpu().numpy()
+        
+        # predict 메서드 호출
+        return self.predict(x)
     
     def predict(self, image: np.ndarray, prompts: Dict[str, Any] = None) -> Dict[str, Any]:
         """SAM 예측 실행 - 완전 구현 (메모리 안전 모드)"""

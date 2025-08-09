@@ -4210,60 +4210,57 @@ class ClothWarpingStep(BaseStepMixin):
         self.fabric_simulator = None
 
     def _load_warping_models_via_central_hub(self):
-        """Central Hub DI Container를 통한 Warping 모델 로딩"""
+        """Central Hub DI Container를 통한 Warping 모델 로딩 (체크포인트 우선)"""
         try:
-            self.logger.info("🔄 Central Hub를 통한 Enhanced Cloth Warping AI 모델 로딩 시작...")
+            self.logger.info("🔄 Central Hub를 통한 Enhanced Cloth Warping AI 모델 로딩 시작 (체크포인트 우선)...")
             
             # Central Hub에서 ModelLoader 가져오기 (자동 주입됨)
             if not hasattr(self, 'model_loader') or not self.model_loader:
-                self.logger.warning("⚠️ ModelLoader가 주입되지 않음 - 고급 AI 네트워크로 직접 생성")
-                self._create_advanced_ai_networks()
-                return
+                self.logger.error("❌ ModelLoader가 주입되지 않음")
+                return False
             
-            # 1. ModelLoader를 통한 체크포인트 모델 로딩
-            checkpoint_loaded = False
+            # 1. TPS 모델 로딩 (체크포인트 우선)
+            tps_model = self._load_tps_model_via_central_hub_improved()
+            if tps_model:
+                self.ai_models['tps_model'] = tps_model
+                self.models_loading_status['tps_model'] = True
+                self.loaded_models.append('tps_model')
+                self.logger.info("✅ TPS 모델 로딩 성공")
+            else:
+                self.logger.error("❌ TPS 모델 로딩 실패")
             
-            try:
-                # 🔥 ModelLoader를 통한 TPS 모델 로딩 (올바른 방식)
-                try:
-                    self.logger.info("🔥 ModelLoader를 통한 TPS 모델 로딩 시작")
-                    
-                    # ModelLoader의 load_model 메서드 사용
-                    tps_real_model = self.model_loader.load_model_for_step("cloth_warping", "tps_transformation")
-                    
-                    if tps_real_model is not None:
-                        # RealAIModel에서 실제 PyTorch 모델 가져오기
-                        tps_model = tps_real_model.get_model_instance()
-                        
-                        if tps_model is None:
-                            # 모델 인스턴스가 없으면 체크포인트 데이터에서 생성
-                            tps_model = tps_real_model.get_checkpoint_data()
-                        # 모델을 디바이스로 이동
-                        if self.device == "mps" and torch.backends.mps.is_available():
-                            tps_model = tps_model.to(dtype=torch.float32, device=self.device)
-                        else:
-                            tps_model = tps_model.to(self.device)
-                        
-                        tps_model.eval()
-                        self.ai_models['tps_model'] = tps_model
-                        self.models_loading_status['tps_model'] = True
-                        self.loaded_models.append('tps_model')
-                        checkpoint_loaded = True
-                        self.logger.info("✅ TPS 모델 로딩 완료 (ModelLoader)")
-                    else:
-                        self.logger.warning("⚠️ TPS 모델 로딩 실패 - 대체 모델 생성")
-                        raise Exception("TPS 모델 로딩 실패")
-                        
-                except Exception as tps_error:
-                    self.logger.warning(f"⚠️ TPS 모델 로딩 실패: {tps_error}")
-                    # 대체 모델 생성
-                    tps_model = self._create_basic_depth_estimation_model("tps_fallback")
-                    if tps_model:
-                        tps_model.to(self.device)
-                        tps_model.eval()
-                        self.ai_models['tps_model'] = tps_model
-                        self.loaded_models.append('tps_model')
-                        self.logger.info("✅ TPS 대체 모델 생성 완료")
+            # 2. VITON-HD 모델 로딩 (체크포인트 우선)
+            viton_model = self._load_viton_model_via_central_hub_improved()
+            if viton_model:
+                self.ai_models['viton_checkpoint'] = viton_model
+                self.models_loading_status['viton_checkpoint'] = True
+                self.loaded_models.append('viton_checkpoint')
+                self.logger.info("✅ VITON-HD 모델 로딩 성공")
+            else:
+                self.logger.error("❌ VITON-HD 모델 로딩 실패")
+            
+            # 3. DPT 모델 로딩 (체크포인트 우선)
+            dpt_model = self._load_dpt_model_via_central_hub_improved()
+            if dpt_model:
+                self.ai_models['dpt_model'] = dpt_model
+                self.models_loading_status['dpt_model'] = True
+                self.loaded_models.append('dpt_model')
+                self.logger.info("✅ DPT 모델 로딩 성공")
+            else:
+                self.logger.error("❌ DPT 모델 로딩 실패")
+            
+            # 최소 1개 모델이라도 로딩되었는지 확인
+            success_count = sum(self.models_loading_status.values())
+            if success_count > 0:
+                self.logger.info(f"✅ Central Hub 기반 Warping 모델 로딩 완료: {success_count}개 모델")
+                return True
+            else:
+                self.logger.error("❌ Central Hub 기반 Warping 모델 로딩 실패")
+                return False
+            
+        except Exception as e:
+            self.logger.error(f"❌ Central Hub를 통한 Warping 모델 로딩 실패: {e}")
+            return False
                 
                 # 🔥 ModelLoader를 통한 VITON-HD 모델 로딩
                 try:

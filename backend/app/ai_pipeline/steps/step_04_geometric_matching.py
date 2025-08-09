@@ -1062,20 +1062,102 @@ class GeometricMatchingStep(BaseStepMixin):
         self.status = ProcessingStatus()
     # _load_ai_models_via_central_hub 메서드는 _load_geometric_matching_models_via_central_hub로 통합됨
     def _load_ai_models_via_central_hub(self) -> bool:
-        """🔥 Central Hub를 통한 AI 모델 로딩 (통합된 직접 로딩 방식 사용)"""
+        """🔥 Central Hub를 통한 AI 모델 로딩 (체크포인트 우선)"""
         try:
-            logger.info("🔥 Central Hub를 통한 AI 모델 로딩 시작 (통합된 직접 로딩)")
+            logger.info("🔥 Central Hub를 통한 AI 모델 로딩 시작 (체크포인트 우선)")
             
-            # 통합된 직접 로딩 방식 사용 (더 안정적)
-            return self._load_geometric_matching_models_via_central_hub()
+            # 1. Advanced Geometric AI 모델 로딩 (체크포인트 우선)
+            advanced_model = self._load_advanced_geometric_ai_via_central_hub_improved()
+            if advanced_model:
+                self.ai_models['advanced_geometric_ai'] = advanced_model
+                self.models_loading_status['advanced_geometric_ai'] = True
+                logger.info("✅ Advanced Geometric AI 모델 로딩 성공")
+            else:
+                logger.error("❌ Advanced Geometric AI 모델 로딩 실패")
             
-            # 통합된 직접 로딩 방식으로 모든 모델 로딩
-            # (중복 코드 제거 - _load_geometric_matching_models_via_central_hub에서 처리)
+            # 2. GMM 모델 로딩 (체크포인트 우선)
+            gmm_model = self._load_gmm_model_via_central_hub_improved()
+            if gmm_model:
+                self.ai_models['gmm'] = gmm_model
+                self.models_loading_status['gmm'] = True
+                logger.info("✅ GMM 모델 로딩 성공")
+            else:
+                logger.error("❌ GMM 모델 로딩 실패")
+            
+            # 3. Optical Flow 모델 로딩 (체크포인트 우선)
+            optical_flow_model = self._load_optical_flow_model_via_central_hub_improved()
+            if optical_flow_model:
+                self.ai_models['optical_flow'] = optical_flow_model
+                self.models_loading_status['optical_flow'] = True
+                logger.info("✅ Optical Flow 모델 로딩 성공")
+            else:
+                logger.error("❌ Optical Flow 모델 로딩 실패")
+            
+            # 4. Keypoint Matcher 모델 로딩 (체크포인트 우선)
+            keypoint_model = self._load_keypoint_matcher_via_central_hub_improved()
+            if keypoint_model:
+                self.ai_models['keypoint_matcher'] = keypoint_model
+                self.models_loading_status['keypoint_matcher'] = True
+                logger.info("✅ Keypoint Matcher 모델 로딩 성공")
+            else:
+                logger.error("❌ Keypoint Matcher 모델 로딩 실패")
+            
+            # 최소 1개 모델이라도 로딩되었는지 확인
+            success_count = sum(self.models_loading_status.values())
+            if success_count > 0:
+                logger.info(f"✅ Central Hub 기반 AI 모델 로딩 완료: {success_count}개 모델")
+                return True
+            else:
+                logger.error("❌ Central Hub 기반 AI 모델 로딩 실패")
+                return False
             
         except Exception as e:
             logger.error(f"❌ Central Hub를 통한 AI 모델 로딩 실패: {e}")
             return False
 
+    def _load_advanced_geometric_ai_via_central_hub_improved(self) -> Optional[nn.Module]:
+        """Advanced Geometric AI 모델 로딩 (체크포인트 우선)"""
+        try:
+            # 1. 먼저 model_loader가 유효한지 확인
+            if self.model_loader is None:
+                logger.warning("⚠️ model_loader가 None입니다")
+                return None
+            
+            # 2. ModelLoader를 통해 Advanced Geometric AI 모델 로딩 (체크포인트 우선)
+            checkpoint_names = [
+                'sam_vit_h_4b8939',  # 2445.7MB - 최고 성능
+                'gmm_final',  # 백업용
+                'tps_network'  # 백업용
+            ]
+            
+            for checkpoint_name in checkpoint_names:
+                try:
+                    logger.info(f"🔍 체크포인트 로딩 시도: {checkpoint_name}")
+                    
+                    # ModelLoader의 load_model_for_step 메서드 사용
+                    loaded_model = self.model_loader.load_model_for_step(
+                        step_type='geometric_matching',
+                        model_name=checkpoint_name
+                    )
+                    
+                    if loaded_model:
+                        logger.info(f"✅ Advanced Geometric AI 모델 로딩 성공: {checkpoint_name}")
+                        return loaded_model
+                    else:
+                        logger.error(f"❌ Advanced Geometric AI 모델 로딩 실패: {checkpoint_name}")
+                        continue
+                        
+                except Exception as e:
+                    logger.error(f"❌ Advanced Geometric AI 모델 로딩 실패 ({checkpoint_name}): {e}")
+                    continue
+            
+            logger.error("❌ 모든 Advanced Geometric AI 체크포인트 로딩 실패")
+            return None
+            
+        except Exception as e:
+            logger.error(f"❌ Advanced Geometric AI 모델 로딩 실패: {e}")
+            return None
+    
     def _load_advanced_geometric_ai_via_central_hub(self, model_loader) -> Optional[nn.Module]:
         """Advanced Geometric Matching AI 모델 로딩 - 실제 훈련된 모델 사용"""
         try:
