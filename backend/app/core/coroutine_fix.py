@@ -47,7 +47,7 @@ class CoroutineFixer:
         BaseStepMixin의 워밍업 관련 메서드들을 안전하게 패치
         """
         try:
-            from backend.app.ai_pipeline.steps.base_step_mixin import BaseStepMixin
+            from ..ai_pipeline.steps.base.base_step_mixin import BaseStepMixin
             
             # _pipeline_warmup 메서드를 안전하게 수정
             def safe_pipeline_warmup(self):

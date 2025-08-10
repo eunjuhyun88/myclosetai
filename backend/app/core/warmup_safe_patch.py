@@ -33,13 +33,13 @@ def disable_problematic_async_methods():
         
         # 문제가 되는 Step 클래스들 import
         try:
-            from backend.app.ai_pipeline.steps.step_01_human_parsing import HumanParsingStep
+            from ..ai_pipeline.steps.step_01_human_parsing import HumanParsingStep
             step_classes.append(HumanParsingStep)
         except ImportError:
             pass
             
         try:
-            from backend.app.ai_pipeline.steps.step_04_geometric_matching import GeometricMatchingStep
+            from ..ai_pipeline.steps.step_04_geometric_matching import GeometricMatchingStep
             step_classes.append(GeometricMatchingStep)
         except ImportError:
             pass

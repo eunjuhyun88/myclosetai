@@ -1437,7 +1437,7 @@ class ClothSegmentationStep(BaseStepMixin):
             self.logger.info("🔧 통합 로더를 통한 세그멘테이션 모델 로딩 시작")
             
             # 통합 로더 생성
-            from backend.app.ai_pipeline.steps.cloth_segmentation_integrated_loader import (
+            from .cloth_segmentation_integrated_loader import (
                 create_cloth_segmentation_integrated_loader,
                 SegmentationMethod
             )
@@ -4044,7 +4044,7 @@ def create_m3_max_segmentation_step(**kwargs) -> ClothSegmentationStep:
 def create_cloth_segmentation_step_integrated(**kwargs) -> 'ClothSegmentationStepIntegrated':
     """통합 ClothSegmentationStep 생성"""
     try:
-        from backend.app.ai_pipeline.steps.step_03_cloth_segmentation_integrated import (
+        from .step_03_cloth_segmentation_integrated import (
             create_cloth_segmentation_step_integrated as create_integrated
         )
         return create_integrated(**kwargs)

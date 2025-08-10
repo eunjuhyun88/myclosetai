@@ -2194,7 +2194,7 @@ logger.info(f"🚀 최적 디바이스: {_get_optimal_device()}")
 🎯 사용 예시:
 
 # 1. 기본 이미지 처리
-from backend.app.ai_pipeline.utils.image_processing import (
+from . import (
     load_image, save_image, preprocess_image, postprocess_segmentation
 )
 
@@ -2206,7 +2206,7 @@ processed = preprocess_image(image, target_size=(512, 512), to_tensor=True)
 mask = postprocess_segmentation(model_output, threshold=0.5)
 
 # 2. 이미지 변환
-from backend.app.ai_pipeline.utils.image_processing import (
+from . import (
     tensor_to_pil, pil_to_tensor, convert_to_numpy
 )
 
@@ -2215,7 +2215,7 @@ tensor = pil_to_tensor(pil_image, device='mps')
 array = convert_to_numpy(image)
 
 # 3. Base64 변환
-from backend.app.ai_pipeline.utils.image_processing import (
+from . import (
     image_to_base64, base64_to_image
 )
 
@@ -2223,12 +2223,12 @@ base64_str = image_to_base64(image, format='JPEG', quality=95)
 image = base64_to_image(base64_str)
 
 # 4. 배치 처리
-from backend.app.ai_pipeline.utils.image_processing import create_batch
+from . import create_batch
 
 batch_tensor = create_batch([img1, img2, img3], device='mps')
 
 # 5. 이미지 향상
-from backend.app.ai_pipeline.utils.image_processing import (
+from . import (
     enhance_image_contrast, apply_clahe_enhancement
 )
 
@@ -2236,7 +2236,7 @@ enhanced = enhance_image_contrast(image, factor=1.2)
 clahe_enhanced = apply_clahe_enhancement(image, clip_limit=2.0)
 
 # 6. Step별 특화 처리
-from backend.app.ai_pipeline.utils.image_processing import (
+from . import (
     preprocess_pose_input, postprocess_human_parsing, create_pose_visualization
 )
 
@@ -2245,7 +2245,7 @@ colored_parsing = postprocess_human_parsing(parsing_output, num_classes=20)
 pose_vis = create_pose_visualization(image, keypoints_result)
 
 # 7. 시각화
-from backend.app.ai_pipeline.utils.image_processing import (
+from . import (
     create_image_grid, create_comparison_image, add_text_to_image
 )
 
@@ -2254,7 +2254,7 @@ comparison = create_comparison_image(original, processed, ('Before', 'After'))
 labeled = add_text_to_image(image, 'MyCloset AI', position=(10, 10))
 
 # 8. 메모리 관리
-from backend.app.ai_pipeline.utils.image_processing import (
+from . import (
     cleanup_image_memory, estimate_memory_usage, optimize_image_memory
 )
 
