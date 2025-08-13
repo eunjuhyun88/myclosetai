@@ -37,7 +37,7 @@ logger = logging.getLogger(__name__)
 
 # 🔥 공통 imports 시스템 사용
 try:
-    from app.ai_pipeline.utils.common_imports import (
+    from ..utils.common_imports import (
         # 표준 라이브러리
         os, sys, gc, time, asyncio, logging, threading, traceback,
         hashlib, json, base64, math, warnings, np,
@@ -92,8 +92,8 @@ try:
     import sys
     import os
     
-    # 01_human_parsing 디렉토리 경로
-    human_parsing_dir = os.path.join(os.path.dirname(__file__), "01_human_parsing")
+    # 현재 디렉토리 경로 (파일이 이미 step_01_human_parsing.py에 있음)
+    human_parsing_dir = os.path.dirname(__file__)
     
     # config 모듈 import
     config_path = os.path.join(human_parsing_dir, "config", "__init__.py")
@@ -115,6 +115,7 @@ try:
                 self.input_size = (512, 512)
                 self.confidence_threshold = 0.5
                 self.quality_threshold = 0.3
+                self.auto_postprocessing = True
         
         class HumanParsingResult:
             def __init__(self):
@@ -128,11 +129,11 @@ try:
         HUMAN_PARSING_COLORS = []
         HUMAN_PARSING_MAPPING = {}
     
-    # 🔥 실제 AI 모델들 import - 더 안전한 방식
+    # 🔥 실제 AI 모델들 import - 간단한 방식
     REAL_MODELS_AVAILABLE = False
     try:
-        # 방법 1: app.ai_pipeline.models에서 import
-        from app.ai_pipeline.models.model_architectures import (
+        # 상대 경로로 import (가장 안전한 방법)
+        from ..models.model_architectures import (
             GraphonomyModel,
             U2NetModel,
             DeepLabV3PlusModel,
@@ -140,79 +141,51 @@ try:
             CompleteModelWrapper
         )
         REAL_MODELS_AVAILABLE = True
-        print("✅ 실제 AI 모델 import 성공 (app.ai_pipeline.models)")
+        print("✅ 실제 AI 모델 import 성공 (상대 경로)")
     except ImportError:
         try:
-            # 방법 2: 상대 경로로 import 시도
-            import sys
-            models_path = os.path.join(os.path.dirname(__file__), '..', 'models')
-            if models_path not in sys.path:
-                sys.path.append(models_path)
-            from model_architectures import (
+            # 절대 경로로 import 시도
+            from ...models.model_architectures import (
                 GraphonomyModel,
                 U2NetModel,
-                DeepLabV3PlusModel
+                DeepLabV3PlusModel,
+                ModelArchitectureFactory,
+                CompleteModelWrapper
             )
             REAL_MODELS_AVAILABLE = True
-            print("✅ 실제 AI 모델 import 성공 (상대 경로)")
+            print("✅ 실제 AI 모델 import 성공 (절대 경로)")
         except ImportError:
-            try:
-                # 방법 3: utils에서 import 시도
-                from app.ai_pipeline.utils import (
-                    GraphonomyModel,
-                    U2NetModel,
-                    DeepLabV3PlusModel
-                )
-                REAL_MODELS_AVAILABLE = True
-                print("✅ 실제 AI 모델 import 성공 (utils)")
-            except ImportError:
-                try:
-                    # 방법 4: 직접 경로로 import 시도
-                    current_dir = os.path.dirname(os.path.abspath(__file__))
-                    models_dir = os.path.join(current_dir, '..', 'models')
-                    if os.path.exists(models_dir):
-                        sys.path.insert(0, models_dir)
-                        from model_architectures import (
-                            GraphonomyModel,
-                            U2NetModel,
-                            DeepLabV3PlusModel
-                        )
-                        REAL_MODELS_AVAILABLE = True
-                        print("✅ 실제 AI 모델 import 성공 (직접 경로)")
-                    else:
-                        raise ImportError("models 디렉토리를 찾을 수 없음")
-                except ImportError:
-                    # 최종 폴백: Mock 모델들 생성
-                    print("⚠️ 실제 AI 모델 import 실패 - Mock 모델 사용")
-                    REAL_MODELS_AVAILABLE = False
-                    
-                    # Mock 모델 클래스들 정의
-                    class GraphonomyModel:
-                        def __init__(self):
-                            self.name = "MockGraphonomyModel"
-                        def detect_parsing(self, image):
-                            return {"status": "mock", "model": "GraphonomyModel"}
-                    
-                    class U2NetModel:
-                        def __init__(self):
-                            self.name = "MockU2NetModel"
-                        def detect_parsing(self, image):
-                            return {"status": "mock", "model": "U2NetModel"}
-                    
-                    class DeepLabV3PlusModel:
-                        def __init__(self):
-                            self.name = "MockDeepLabV3PlusModel"
-                        def detect_parsing(self, image):
-                            return {"status": "mock", "model": "DeepLabV3PlusModel"}
-                    
-                    class ModelArchitectureFactory:
-                        @staticmethod
-                        def create_model(model_type):
-                            return {"status": "mock", "model_type": model_type}
-                    
-                    class CompleteModelWrapper:
-                        def __init__(self):
-                            self.name = "MockCompleteModelWrapper"
+            # Mock 모델들 생성
+            print("⚠️ 실제 AI 모델 import 실패 - Mock 모델 사용")
+            REAL_MODELS_AVAILABLE = False
+            
+            # Mock 모델 클래스들 정의
+            class GraphonomyModel:
+                def __init__(self):
+                    self.name = "MockGraphonomyModel"
+                def detect_parsing(self, image):
+                    return {"status": "mock", "model": "GraphonomyModel"}
+            
+            class U2NetModel:
+                def __init__(self):
+                    self.name = "MockU2NetModel"
+                def detect_parsing(self, image):
+                    return {"status": "mock", "model": "U2NetModel"}
+            
+            class DeepLabV3PlusModel:
+                def __init__(self):
+                    self.name = "MockDeepLabV3PlusModel"
+                def detect_parsing(self, image):
+                    return {"status": "mock", "model": "DeepLabV3PlusModel"}
+            
+            class ModelArchitectureFactory:
+                @staticmethod
+                def create_model(model_type):
+                    return {"status": "mock", "model_type": model_type}
+            
+            class CompleteModelWrapper:
+                def __init__(self):
+                    self.name = "MockCompleteModelWrapper"
     
     # models 모듈들 import
     models_path = os.path.join(human_parsing_dir, "models", "__init__.py")
@@ -316,6 +289,7 @@ except ImportError as e:
             self.input_size = (512, 512)
             self.confidence_threshold = 0.5
             self.quality_threshold = 0.3
+            self.auto_postprocessing = True
     
     class HumanParsingResult:
         def __init__(self):
@@ -371,17 +345,7 @@ except ImportError as e:
             pass
 
 # BaseStepMixin import
-try:
-    from app.ai_pipeline.steps.base.base_step_mixin import BaseStepMixin
-except ImportError:
-    # 폴백: 상대 경로로 import 시도
-    try:
-        from .base.base_step_mixin import BaseStepMixin
-    except ImportError:
-        # 최종 폴백: mock 클래스
-        class BaseStepMixin:
-            def __init__(self, **kwargs):
-                pass
+from .base.base_step_mixin import BaseStepMixin
 
 # 경고 무시 설정
 warnings.filterwarnings('ignore', category=DeprecationWarning)

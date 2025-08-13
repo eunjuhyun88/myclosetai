@@ -760,9 +760,10 @@ class DependencyManager:
             # 프로젝트의 ModelLoader 해결 시도
             try:
                 import importlib
-                module = importlib.import_module('app.ai_pipeline.utils.model_loader')
-                if hasattr(module, 'get_global_model_loader'):
-                    loader = module.get_global_model_loader()
+                # from app.ai_pipeline.utils.model_loader import get_global_model_loader  # 이 파일은 비어있음
+                from app.ai_pipeline.models.model_loader import CentralModelLoader
+                if CentralModelLoader:
+                    loader = CentralModelLoader()
                     if loader and hasattr(loader, 'load_model') and hasattr(loader, 'create_step_interface'):
                         return loader
             except ImportError:

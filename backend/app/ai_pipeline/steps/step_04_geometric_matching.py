@@ -188,11 +188,12 @@ except ImportError as e:
     @dataclass
     class GeometricMatchingConfig:
         """기하학적 매칭 설정"""
-        method: MatchingMethod = MatchingMethod.GMM
-        quality_level: QualityLevel = QualityLevel.HIGH
-        input_size: Tuple[int, int] = (512, 512)
+        input_size: Tuple[int, int] = (256, 192)
         confidence_threshold: float = 0.7
         enable_visualization: bool = True
+        device: str = "auto"
+        matching_method: str = "advanced_deeplab_aspp_self_attention"
+        auto_postprocessing: bool = True
 
 except ImportError as e:
     print(f"⚠️ 모듈 import 실패: {e}")
@@ -209,6 +210,7 @@ except ImportError as e:
         enable_visualization: bool = True
         device: str = "auto"
         matching_method: str = "advanced_deeplab_aspp_self_attention"
+        auto_postprocessing: bool = True
     
     @dataclass
     class ProcessingStatus:
@@ -251,16 +253,8 @@ except ImportError as e:
     def validate_matching_result(result):
         return True
 
-# 기존 완전한 BaseStepMixin import
-try:
-    from app.ai_pipeline.steps.base.base_step_mixin import BaseStepMixin
-except ImportError:
-    try:
-        from .base.base_step_mixin import BaseStepMixin
-    except ImportError:
-        class BaseStepMixin:
-            def __init__(self, **kwargs):
-                pass
+# BaseStepMixin import
+from app.ai_pipeline.steps.base.base_step_mixin import BaseStepMixin
 
 class GeometricMatchingStep(BaseStepMixin):
     """
@@ -360,21 +354,18 @@ class GeometricMatchingStep(BaseStepMixin):
     def _create_mock_gmm_model(self):
         """Mock GMM 모델 생성 - 실제 구조와 유사하게"""
         class MockGMMModel(nn.Module):
-            def __init__(self, input_channels=6, hidden_dim=1024, num_control_points=20):
+            def __init__(self, input_nc=3, num_control_points=20):
                 super().__init__()
-                self.input_channels = input_channels
-                self.hidden_dim = hidden_dim
+                self.input_nc = input_nc
                 self.num_control_points = num_control_points
                 # 실제 GMMModel과 유사한 구조
-                self.conv1 = nn.Conv2d(input_channels, 64, 3, padding=1)
+                self.conv1 = nn.Conv2d(input_nc, 64, 3, padding=1)
                 self.conv2 = nn.Conv2d(64, 128, 3, padding=1)
                 self.final_layer = nn.Conv2d(128, num_control_points * 2, 1)
                 self.relu = nn.ReLU(inplace=True)
             
-            def forward(self, person_image, clothing_image):
-                # 입력 결합 (6채널)
-                combined_input = torch.cat([person_image, clothing_image], dim=1)
-                x = self.relu(self.conv1(combined_input))
+            def forward(self, x):
+                x = self.relu(self.conv1(x))
                 x = self.relu(self.conv2(x))
                 x = self.final_layer(x)
                 return x
@@ -388,19 +379,44 @@ class GeometricMatchingStep(BaseStepMixin):
                     else:
                         # numpy나 PIL 이미지를 tensor로 변환
                         if hasattr(person_image, 'shape'):
-                            input_tensor_person = torch.from_numpy(person_image).float().unsqueeze(0)
+                            input_tensor_person = torch.from_numpy(person_image).float()
+                            # 이미 배치 차원이 있는지 확인
+                            if input_tensor_person.dim() == 3:  # (C, H, W)
+                                input_tensor_person = input_tensor_person.unsqueeze(0)  # (1, C, H, W)
+                            elif input_tensor_person.dim() == 4:  # (B, C, H, W)
+                                pass  # 이미 배치 차원이 있음
                         else:
                             input_tensor_person = torch.randn(1, 3, 256, 192)
                         
                         if hasattr(clothing_image, 'shape'):
-                            input_tensor_clothing = torch.from_numpy(clothing_image).float().unsqueeze(0)
+                            input_tensor_clothing = torch.from_numpy(clothing_image).float()
+                            # 이미 배치 차원이 있는지 확인
+                            if input_tensor_clothing.dim() == 3:  # (C, H, W)
+                                input_tensor_clothing = input_tensor_clothing.unsqueeze(0)  # (1, C, H, W)
+                            elif input_tensor_clothing.dim() == 4:  # (B, C, H, W)
+                                pass  # 이미 배치 차원이 있음
                         else:
                             input_tensor_clothing = torch.randn(1, 3, 256, 192)
                     
-                    output = self.forward(input_tensor_person, input_tensor_clothing)
+                    # 입력 크기 통일을 위해 person_image만 사용 (GMM은 단일 입력)
+                    output = self.forward(input_tensor_person)
+                    
+                    # 출력 크기 통일: (B, num_control_points, 2) 형태로 보장
+                    if output.dim() == 4:  # (B, C, H, W)
+                        B, C, H, W = output.shape
+                        # 출력을 control points로 변환
+                        control_points = output.view(B, self.num_control_points, 2)
+                    elif output.dim() == 3:  # (B, C, H) 또는 (B, H, W)
+                        B = output.shape[0]
+                        # 출력을 control points로 변환
+                        control_points = output.view(B, self.num_control_points, 2)
+                    else:
+                        # 1차원 또는 2차원 출력인 경우
+                        control_points = output.view(1, self.num_control_points, 2)
+                    
                     # Mock 매칭 결과 생성
                     matching_result = {
-                        'control_points': output.view(-1, self.num_control_points, 2).cpu().numpy(),
+                        'control_points': control_points.cpu().numpy(),
                         'confidence': 0.8,
                         'model_name': 'mock_gmm'
                     }
@@ -436,14 +452,33 @@ class GeometricMatchingStep(BaseStepMixin):
                     else:
                         # numpy나 PIL 이미지를 tensor로 변환
                         if hasattr(person_image, 'shape'):
-                            input_tensor = torch.from_numpy(person_image).float().unsqueeze(0)
+                            input_tensor = torch.from_numpy(person_image).float()
+                            # 이미 배치 차원이 있는지 확인
+                            if input_tensor.dim() == 3:  # (C, H, W)
+                                input_tensor = input_tensor.unsqueeze(0)  # (1, C, H, W)
+                            elif input_tensor.dim() == 4:  # (B, C, H, W)
+                                pass  # 이미 배치 차원이 있음
                         else:
                             input_tensor = torch.randn(1, 3, 256, 192)
                     
                     output = self.forward(input_tensor)
+                    
+                    # 출력 크기 통일: (B, num_control_points, 2) 형태로 보장
+                    if output.dim() == 4:  # (B, C, H, W)
+                        B, C, H, W = output.shape
+                        # 출력을 control points로 변환
+                        control_points = output.view(B, self.num_control_points, 2)
+                    elif output.dim() == 3:  # (B, C, H) 또는 (B, H, W)
+                        B = output.shape[0]
+                        # 출력을 control points로 변환
+                        control_points = output.view(B, self.num_control_points, 2)
+                    else:
+                        # 1차원 또는 2차원 출력인 경우
+                        control_points = output.view(1, self.num_control_points, 2)
+                    
                     # Mock 매칭 결과 생성
                     matching_result = {
-                        'control_points': output.view(-1, self.num_control_points, 2).cpu().numpy(),
+                        'control_points': control_points.cpu().numpy(),
                         'confidence': 0.75,
                         'model_name': 'mock_tps'
                     }
@@ -480,19 +515,39 @@ class GeometricMatchingStep(BaseStepMixin):
                     else:
                         # numpy나 PIL 이미지를 tensor로 변환
                         if hasattr(img1, 'shape'):
-                            input_tensor1 = torch.from_numpy(img1).float().unsqueeze(0)
+                            input_tensor1 = torch.from_numpy(img1).float()
+                            # 이미 배치 차원이 있는지 확인
+                            if input_tensor1.dim() == 3:  # (C, H, W)
+                                input_tensor1 = input_tensor1.unsqueeze(0)  # (1, C, H, W)
+                            elif input_tensor1.dim() == 4:  # (B, C, H, W)
+                                pass  # 이미 배치 차원이 있음
                         else:
                             input_tensor1 = torch.randn(1, 3, 256, 192)
                         
                         if hasattr(img2, 'shape'):
-                            input_tensor2 = torch.from_numpy(img2).float().unsqueeze(0)
+                            input_tensor2 = torch.from_numpy(img2).float()
+                            # 이미 배치 차원이 있는지 확인
+                            if input_tensor2.dim() == 3:  # (C, H, W)
+                                input_tensor2 = input_tensor2.unsqueeze(0)  # (1, C, H, W)
+                            elif input_tensor2.dim() == 4:  # (B, C, H, W)
+                                pass  # 이미 배치 차원이 있음
                         else:
                             input_tensor2 = torch.randn(1, 3, 256, 192)
                     
                     output = self.forward(input_tensor1, input_tensor2)
+                    
+                    # 출력 크기 통일: (B, 2, H, W) 형태로 보장 (flow field)
+                    if output.dim() == 4:  # (B, 2, H, W)
+                        flow_field = output
+                    elif output.dim() == 3:  # (2, H, W)
+                        flow_field = output.unsqueeze(0)  # (1, 2, H, W)
+                    else:
+                        # 1차원 또는 2차원 출력인 경우
+                        flow_field = output.view(1, 2, 256, 192)
+                    
                     # Mock 광학 흐름 결과 생성
                     flow_result = {
-                        'flow_field': output.cpu().numpy(),
+                        'flow_field': flow_field.cpu().numpy(),
                         'confidence': 0.7,
                         'model_name': 'mock_raft'
                     }
@@ -533,12 +588,22 @@ class GeometricMatchingStep(BaseStepMixin):
                         else:
                             # numpy나 PIL 이미지를 tensor로 변환
                             if hasattr(person_image, 'shape'):
-                                input_tensor_person = torch.from_numpy(person_image).float().unsqueeze(0)
+                                input_tensor_person = torch.from_numpy(person_image).float()
+                                # 이미 배치 차원이 있는지 확인
+                                if input_tensor_person.dim() == 3:  # (C, H, W)
+                                    input_tensor_person = input_tensor_person.unsqueeze(0)  # (1, C, H, W)
+                                elif input_tensor_person.dim() == 4:  # (B, C, H, W)
+                                    pass  # 이미 배치 차원이 있음
                             else:
                                 input_tensor_person = torch.randn(1, 3, 256, 192)
                             
                             if hasattr(clothing_image, 'shape'):
-                                input_tensor_clothing = torch.from_numpy(clothing_image).float().unsqueeze(0)
+                                input_tensor_clothing = torch.from_numpy(clothing_image).float()
+                                # 이미 배치 차원이 있는지 확인
+                                if input_tensor_clothing.dim() == 3:  # (C, H, W)
+                                    input_tensor_clothing = input_tensor_clothing.unsqueeze(0)  # (1, C, H, W)
+                                elif input_tensor_clothing.dim() == 4:  # (B, C, H, W)
+                                    pass  # 이미 배치 차원이 있음
                             else:
                                 input_tensor_clothing = torch.randn(1, 3, 256, 192)
                         

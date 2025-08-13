@@ -21,6 +21,9 @@ import sys
 import time
 import logging
 import warnings
+import threading
+from pathlib import Path
+from typing import Dict, Any, Optional, List, Tuple, Union, Type, Callable
 from typing import Dict, Any, List, Optional, Tuple, Union
 
 # PyTorch import
@@ -77,41 +80,14 @@ except ImportError as e:
             REAL_MODELS_AVAILABLE = False
 
 # ==============================================
-# 🔥 BaseStepMixin 동적 로드
-# ==============================================
-
-def get_base_step_mixin_class():
-    """BaseStepMixin 클래스를 동적으로 로드"""
-    try:
-        from ..base.base_step_mixin import BaseStepMixin
-        return BaseStepMixin
-    except ImportError:
-        try:
-            from ...base.base_step_mixin import BaseStepMixin
-            return BaseStepMixin
-        except ImportError:
-            # 기본 구현 제공
-            class BaseStepMixin:
-                def __init__(self, **kwargs):
-                    self.step_name = kwargs.get('step_name', '05_cloth_warping')
-                    self.step_version = kwargs.get('step_version', '2.0')
-                    self.step_description = kwargs.get('step_description', 'Cloth Warping Step')
-                    self.device = kwargs.get('device', 'cpu')
-                    self.logger = logging.getLogger(__name__)
-                
-                def process(self, **kwargs):
-                    return self._run_ai_inference(kwargs)
-                
-                def _run_ai_inference(self, kwargs):
-                    raise NotImplementedError
-            
-            return BaseStepMixin
+# BaseStepMixin import
+from app.ai_pipeline.steps.base.base_step_mixin import BaseStepMixin
 
 # ==============================================
 # 🔥 ClothWarpingStep 클래스
 # ==============================================
 
-class ClothWarpingStep(get_base_step_mixin_class()):
+class ClothWarpingStep(BaseStepMixin):
     """Cloth Warping Step - 실제 AI 모델 활용"""
     
     def __init__(self, **kwargs):
@@ -433,11 +409,11 @@ class ClothWarpingStep(get_base_step_mixin_class()):
     
     def _create_default_cloth_image(self) -> np.ndarray:
         """기본 의류 이미지 생성"""
-        return np.ones((768, 1024, 3), dtype=np.uint8) * 128
+        return np.ones((768, 768, 3), dtype=np.uint8) * 128
     
     def _create_default_person_image(self) -> np.ndarray:
         """기본 인체 이미지 생성"""
-        return np.ones((768, 1024, 3), dtype=np.uint8) * 255
+        return np.ones((768, 768, 3), dtype=np.uint8) * 255
     
     def get_model_status(self) -> Dict[str, Any]:
         """모델 상태 조회"""

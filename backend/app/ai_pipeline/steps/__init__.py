@@ -94,20 +94,53 @@ globals()['safe_copy'] = safe_copy
 
 # ==============================================
 # ==============================================
-# 🔥 3. TYPE_CHECKING 순환참조 방지
+# 🔥 3. 간단한 Step 로딩 시스템 (순환참조 방지)
 # ==============================================
 
-if TYPE_CHECKING:
-    from .base_step_mixin import BaseStepMixin
-    from ..utils.memory_manager import MemoryManager
-    from ..utils.data_converter import DataConverter
-    from ..factories.step_factory import StepFactory
-else:
-    BaseStepMixin = Any
-    ModelLoader = Any
-    MemoryManager = Any
-    DataConverter = Any
-    StepFactory = Any
+# 기본 클래스들 (필요시에만 import)
+BaseStepMixin = None
+MemoryManager = None
+DataConverter = None
+StepFactory = None
+
+# DI Container import (상대 경로 우선)
+try:
+    from ...core.di_container import (
+        CentralHubDIContainer,
+        get_global_container,
+        inject_dependencies_to_step_safe,
+        get_service_safe,
+        register_service_safe
+    )
+    DI_CONTAINER_AVAILABLE = True
+    logger.info("✅ 상대 경로로 DI Container import 성공")
+except ImportError:
+    try:
+        # 절대 경로로 import 시도
+        from app.core.di_container import (
+            CentralHubDIContainer,
+            get_global_container,
+            inject_dependencies_to_step_safe,
+            get_service_safe,
+            register_service_safe
+        )
+        DI_CONTAINER_AVAILABLE = True
+        logger.info("✅ 절대 경로로 DI Container import 성공")
+    except ImportError:
+        logger.warning("⚠️ DI Container 없음 - 기본 모드로 동작")
+        DI_CONTAINER_AVAILABLE = False
+        
+        # 폴백 함수들
+        def inject_dependencies_to_step_safe(step_instance, container=None):
+            logger.debug("⚠️ DI Container 없음 - 의존성 주입 스킵")
+            return 0
+        
+        def get_service_safe(key: str):
+            logger.debug(f"⚠️ DI Container 없음 - 서비스 조회 실패: {key}")
+            return None
+        
+        def register_service_safe(key: str, service):
+            logger.debug(f"⚠️ DI Container 없음 - 서비스 등록 스킵: {key}")
 
 # ==============================================
 # 🔥 4. 환경 설정 및 프로젝트 구조 자동 감지
@@ -173,6 +206,16 @@ APP_ROOT = BACKEND_ROOT / 'app'
 AI_PIPELINE_ROOT = APP_ROOT / 'ai_pipeline' 
 STEPS_ROOT = AI_PIPELINE_ROOT / 'steps'
 AI_MODELS_ROOT = BACKEND_ROOT / 'ai_models'
+
+# 전역 변수로 등록하여 모든 함수에서 접근 가능하도록 함
+globals().update({
+    'PROJECT_ROOT': PROJECT_ROOT,
+    'BACKEND_ROOT': BACKEND_ROOT,
+    'APP_ROOT': APP_ROOT,
+    'AI_PIPELINE_ROOT': AI_PIPELINE_ROOT,
+    'STEPS_ROOT': STEPS_ROOT,
+    'AI_MODELS_ROOT': AI_MODELS_ROOT
+})
 
 # 구조 확인 (존재하는 경로만 보고)
 structure_status = {
@@ -285,34 +328,10 @@ except ImportError:
     logger.warning("⚠️ PyTorch 없음 - conda install pytorch 권장")
 
 # ==============================================
-# 🔥 5. DI Container 안전한 Import
+# 🔥 5. DI Container 안전한 Import (상단에서 이미 처리됨)
 # ==============================================
 
-DI_CONTAINER_AVAILABLE = False
-try:
-    from app.core.di_container import (
-        CentralHubDIContainer,
-        get_global_container,
-        inject_dependencies_to_step_safe,
-        get_service_safe,
-        register_service_safe
-    )
-    DI_CONTAINER_AVAILABLE = True
-    logger.info("✅ DI Container v7.0 로드 성공")
-except ImportError:
-    logger.warning("⚠️ DI Container 없음 - 기본 모드로 동작")
-    
-    # 폴백 함수들
-    def inject_dependencies_to_step_safe(step_instance, container=None):
-        logger.debug("⚠️ DI Container 없음 - 의존성 주입 스킵")
-        return 0
-    
-    def get_service_safe(key: str):
-        logger.debug(f"⚠️ DI Container 없음 - 서비스 조회 실패: {key}")
-        return None
-    
-    def register_service_safe(key: str, service):
-        logger.debug(f"⚠️ DI Container 없음 - 서비스 등록 스킵: {key}")
+# DI Container는 상단에서 상대 경로로 import됨
 
 # ==============================================
 # 🔥 6. 전역 Container 가져오기
@@ -351,9 +370,9 @@ def load_base_step_mixin_safe() -> Optional[Type]:
     
     # 1. 실제 파일 위치 확인 (검증 결과 활용)
     possible_paths = [
-        STEPS_ROOT / 'base_step_mixin.py',
-        AI_PIPELINE_ROOT / 'steps' / 'base_step_mixin.py',
-        Path(__file__).parent / 'base_step_mixin.py'
+        STEPS_ROOT / 'base' / 'base_step_mixin.py',
+        AI_PIPELINE_ROOT / 'steps' / 'base' / 'base_step_mixin.py',
+        Path(__file__).parent / 'base' / 'base_step_mixin.py'
     ]
     
     existing_path = None
@@ -369,14 +388,14 @@ def load_base_step_mixin_safe() -> Optional[Type]:
     
     # 2. 다양한 import 경로 시도 (프로젝트 구조 기반)
     import_paths = [
-        'app.ai_pipeline.steps.base_step_mixin',
-        'ai_pipeline.steps.base_step_mixin',
-        'steps.base_step_mixin'
+        'app.ai_pipeline.steps.base.base_step_mixin',  # 올바른 경로
+        'ai_pipeline.steps.base.base_step_mixin',
+        'steps.base.base_step_mixin'
     ]
     
     # 상대 import는 패키지 내에서만 시도
     if __package__ is not None:
-        import_paths.append('.base_step_mixin')
+        import_paths.append('.base.base_step_mixin')  # 올바른 상대 경로
     
     for path in import_paths:
         try:
@@ -485,116 +504,45 @@ BASESTEP_AVAILABLE = BaseStepMixin is not None
 # ==============================================
 
 def safe_import_step_class(step_module_name: str, step_class_name: str) -> Optional[Type]:
-    """Step 클래스 완전 안전한 import - 실제 프로젝트 구조 기반"""
+    """안전한 Step 클래스 import (오류 내성) - 순환참조 방지"""
     
-    # 1. Step 파일 존재 확인 (실제 구조 기반)
-    step_file_paths = [
-        STEPS_ROOT / f'{step_module_name}.py',
-        AI_PIPELINE_ROOT / 'steps' / f'{step_module_name}.py',
-        Path(__file__).parent / f'{step_module_name}.py'
-    ]
-    
-    existing_file = None
-    for path in step_file_paths:
-        if path.exists() and path.is_file():
-            existing_file = path
-            logger.debug(f"📁 Step 파일 발견: {path}")
-            break
-    
-    if not existing_file:
-        logger.warning(f"⚠️ {step_module_name}.py 파일을 찾을 수 없음")
-        return None
-    
-    # 2. 파일 내용 사전 검증 (threading import 확인) - 개선된 검증
+    # 1. 직접 import 시도 (가장 간단하고 확실한 방법)
     try:
-        with open(existing_file, 'r', encoding='utf-8') as f:
-            content = f.read()
-            # 더 정확한 threading import 검증
-            has_threading = (
-                'import threading' in content or 
-                'from threading import' in content or
-                'threading' in content  # 실제 사용 여부도 확인
-            )
-            if not has_threading:
-                logger.debug(f"📋 {step_module_name}.py에 threading import 누락 감지 (디버그 레벨)")
+        import_path = f"app.ai_pipeline.steps.{step_module_name}"
+        module = importlib.import_module(import_path)
+        step_class = getattr(module, step_class_name, None)
+        if step_class:
+            logger.info(f"✅ {step_class_name} 직접 import 성공")
+            return step_class
     except Exception as e:
-        logger.debug(f"📋 파일 내용 확인 실패: {e}")
+        logger.debug(f"📋 {step_class_name} 직접 import 실패: {e}")
     
-    # 3. 다양한 import 경로 시도 (프로젝트 구조 기반)
-    import_paths = [
-        f'app.ai_pipeline.steps.{step_module_name}',
-        f'ai_pipeline.steps.{step_module_name}',
-        f'steps.{step_module_name}'
-    ]
-    
-    # 상대 import는 패키지 내에서만 시도
-    if __package__ is not None:
-        import_paths.append(f'.{step_module_name}')
-    
-    for path in import_paths:
-        try:
-            if path.startswith('.') and __package__:
-                # 상대 import
-                module = importlib.import_module(path, package=__package__)
-            else:
-                # 절대 import
-                module = importlib.import_module(path)
-            
-            step_class = getattr(module, step_class_name, None)
-            if step_class:
-                logger.info(f"✅ {step_class_name} import 성공: {path}")
-                return step_class
-                
-        except Exception as e:
-            # threading 오류 특별 처리
-            error_msg = str(e).lower()
-            if 'threading' in error_msg:
-                logger.error(f"❌ {step_class_name} threading 오류: {e}")
-                logger.error(f"💡 해결책: {step_module_name}.py 파일에 'import threading' 추가 필요")
-            else:
-                logger.debug(f"📋 {step_class_name} import 시도: {path} - {e}")
-            continue
-    
-    # 4. 직접 파일 로딩 시도 (threading 및 logger 미리 주입)
+    # 2. 상대 경로 import 시도
     try:
-        # Python 버전 호환성을 위한 안전한 importlib.util 사용
-        if hasattr(importlib, 'util'):
+        from . import step_module_name
+        step_class = getattr(step_module_name, step_class_name, None)
+        if step_class:
+            logger.info(f"✅ {step_class_name} 상대 경로 import 성공")
+            return step_class
+    except Exception as e:
+        logger.debug(f"📋 {step_class_name} 상대 경로 import 실패: {e}")
+    
+    # 3. 파일 경로 기반 import 시도 (최후의 수단)
+    existing_file = STEPS_ROOT / f"{step_module_name}.py"
+    if existing_file.exists():
+        try:
             spec = importlib.util.spec_from_file_location(step_module_name, existing_file)
             if spec and spec.loader:
                 module = importlib.util.module_from_spec(spec)
-                
-                # 필수 모듈들을 미리 주입하여 import 오류 방지
-                setattr(module, 'threading', threading)
-                setattr(module, 'logging', logging)
-                
-                # logger도 미리 주입 (ClothSegmentationStep 오류 해결)
-                module_logger = logging.getLogger(step_module_name)
-                setattr(module, 'logger', module_logger)
-                
                 spec.loader.exec_module(module)
                 step_class = getattr(module, step_class_name, None)
                 if step_class:
-                    logger.info(f"✅ {step_class_name} 직접 로딩 성공: {existing_file}")
+                    logger.info(f"✅ {step_class_name} 파일 기반 import 성공")
                     return step_class
-        else:
-            # Python 3.4 이전 버전을 위한 대안
-            import imp
-            module = imp.load_source(step_module_name, str(existing_file))
-            
-            # 필수 모듈들을 미리 주입
-            setattr(module, 'threading', threading)
-            setattr(module, 'logging', logging)
-            module_logger = logging.getLogger(step_module_name)
-            setattr(module, 'logger', module_logger)
-            
-            step_class = getattr(module, step_class_name, None)
-            if step_class:
-                logger.info(f"✅ {step_class_name} 직접 로딩 성공 (legacy): {existing_file}")
-                return step_class
-    except Exception as e:
-        logger.warning(f"⚠️ {step_class_name} 직접 로딩 실패: {e}")
+        except Exception as e:
+            logger.debug(f"📋 {step_class_name} 파일 기반 import 실패: {e}")
     
-    logger.warning(f"⚠️ {step_class_name} import 완전 실패")
+    logger.warning(f"⚠️ {step_class_name} 모든 import 방법 실패")
     return None
 
 # ==============================================
@@ -889,7 +837,7 @@ def optimize_steps_memory():
         
         # M3 Max MPS 최적화
         if TORCH_AVAILABLE and IS_M3_MAX and MPS_AVAILABLE:
-            import torch
+            # torch는 이미 import되어 있음 - 중복 import 방지
             if hasattr(torch.backends.mps, 'empty_cache'):
                 torch.backends.mps.empty_cache()
         
@@ -923,7 +871,7 @@ def optimize_conda_environment():
         
         # PyTorch 최적화
         if TORCH_AVAILABLE:
-            import torch
+            # torch는 이미 import되어 있음 - 중복 import 방지
             torch.set_num_threads(max(1, os.cpu_count() // 2))
             
             # M3 Max MPS 최적화

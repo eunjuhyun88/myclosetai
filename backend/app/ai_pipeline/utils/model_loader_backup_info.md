@@ -45,7 +45,6 @@ cp backend/app/ai_pipeline/utils/model_loader_backup_v5.1_20250809_051442.py bac
 # 또는 다른 이름으로 복원
 cp backend/app/ai_pipeline/utils/model_loader_backup_v5.1_20250809_051442.py backend/app/ai_pipeline/utils/model_loader_restored.py
 ```
-
 ## ⚠️ 주의사항
 - 이 백업 파일은 2025년 8월 9일 기준의 안정적인 버전입니다
 - 복원 시 현재 작업 중인 변경사항이 손실될 수 있습니다

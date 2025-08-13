@@ -67,8 +67,9 @@ if TYPE_CHECKING:
     from PIL import Image
     from app.core.di_container import CentralHubDIContainer
     from app.ai_pipeline.factories.step_factory import StepFactory, StepType
-    from app.ai_pipeline.steps.base_step_mixin import BaseStepMixin
-    from app.ai_pipeline.utils.model_loader import ModelLoader
+    from app.ai_pipeline.steps.base.base_step_mixin import BaseStepMixin
+    # from app.ai_pipeline.utils.model_loader import ModelLoader  # 이 파일은 비어있음
+    from app.ai_pipeline.models.model_loader import CentralModelLoader as ModelLoader
     from app.ai_pipeline.utils.memory_manager import MemoryManager
     from app.ai_pipeline.utils.data_converter import DataConverter
 

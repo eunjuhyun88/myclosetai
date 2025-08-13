@@ -1195,9 +1195,21 @@ class CentralHubDIContainer:
                 self.logger.error(f"❌ 1단계: 환경 검증 실패 - {e}")
                 raise
             
-            # 🔥 2단계: ModelLoader 모듈 import
+            # 🔥 2단계: ModelLoader 모듈 import (지연 import로 순환참조 방지)
             try:
-                from ..ai_pipeline.utils.model_loader import ModelLoader
+                # 순환참조 방지를 위해 지연 import 사용
+                import importlib.util
+                spec = importlib.util.spec_from_file_location(
+                    "model_loader", 
+                    os.path.join(os.path.dirname(__file__), "..", "ai_pipeline", "models", "model_loader.py")
+                )
+                if spec and spec.loader:
+                    model_loader_module = importlib.util.module_from_spec(spec)
+                    spec.loader.exec_module(model_loader_module)
+                    ModelLoader = getattr(model_loader_module, 'CentralModelLoader')
+                else:
+                    raise ImportError("ModelLoader 모듈을 찾을 수 없습니다")
+                
                 stage_status['module_import'] = 'success'
                 self.logger.debug("✅ 2단계: ModelLoader 모듈 import 성공")
                 
@@ -1206,7 +1218,7 @@ class CentralHubDIContainer:
                     "stage": "module_import",
                     "error_type": "ImportError",
                     "message": str(e),
-                    "import_path": "..ai_pipeline.utils.model_loader"
+                    "import_path": "..ai_pipeline.models.model_loader"
                 }
                 errors.append(error_info)
                 stage_status['module_import'] = 'failed'
@@ -1248,11 +1260,21 @@ class CentralHubDIContainer:
             
             # 🔥 4단계: Central Hub Container 연결
             try:
-                model_loader._central_hub_container = self
-                model_loader._container_initialized = True
-                
-                stage_status['central_hub_connection'] = 'success'
-                self.logger.debug("✅ 4단계: Central Hub Container 연결 성공")
+                # ModelLoader의 connect_to_central_hub 메서드 사용
+                if hasattr(model_loader, 'connect_to_central_hub'):
+                    connection_success = model_loader.connect_to_central_hub(self)
+                    if connection_success:
+                        stage_status['central_hub_connection'] = 'success'
+                        self.logger.debug("✅ 4단계: Central Hub Container 연결 성공")
+                    else:
+                        stage_status['central_hub_connection'] = 'failed'
+                        self.logger.warning("⚠️ 4단계: Central Hub Container 연결 실패")
+                else:
+                    # 레거시 방식으로 연결
+                    model_loader._central_hub_container = self
+                    model_loader._container_initialized = True
+                    stage_status['central_hub_connection'] = 'success'
+                    self.logger.debug("✅ 4단계: Central Hub Container 연결 성공 (레거시 방식)")
                 
             except Exception as e:
                 error_info = {

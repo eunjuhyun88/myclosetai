@@ -54,43 +54,7 @@ from concurrent.futures import ThreadPoolExecutor
 warnings.filterwarnings('ignore', category=DeprecationWarning)
 warnings.filterwarnings('ignore', category=ImportWarning)
 
-# 🔥 에러 처리 헬퍼 함수들 import
-try:
-    from app.core.exceptions import (
-        handle_step_initialization_error,
-        handle_dependency_injection_error,
-        handle_data_conversion_error,
-        handle_central_hub_error,
-        create_step_error_response,
-        validate_step_environment,
-        log_step_performance
-    )
-    EXCEPTION_HELPERS_AVAILABLE = True
-except ImportError:
-    EXCEPTION_HELPERS_AVAILABLE = False
-    # 폴백 함수들 정의
-    def handle_step_initialization_error(step_name, error, context=None):
-        return {'success': False, 'error': 'INIT_ERROR', 'message': str(error)}
-    
-    def handle_dependency_injection_error(step_name, service_name, error):
-        return {'success': False, 'error': 'DI_ERROR', 'message': str(error)}
-    
-    def handle_data_conversion_error(step_name, conversion_type, error, data_info=None):
-        return {'success': False, 'error': 'CONVERSION_ERROR', 'message': str(error)}
-    
-    def handle_central_hub_error(step_name, operation, error):
-        return {'success': False, 'error': 'CENTRAL_HUB_ERROR', 'message': str(error)}
-    
-    def create_step_error_response(step_name, error, operation="unknown"):
-        return {'success': False, 'error': 'STEP_ERROR', 'message': str(error)}
-    
-    def validate_step_environment(step_name):
-        return {'success': True, 'step_name': step_name, 'checks': {}}
-    
-    def log_step_performance(step_name, operation, start_time, success, error=None):
-        return {'step_name': step_name, 'operation': operation, 'success': success}
-
-# 🔥 수정: 안전한 Logger 초기화
+# 🔥 Logger 먼저 초기화 (순서 중요!)
 _LOGGER_INITIALIZED = False
 _MODULE_LOGGER = None
 
@@ -135,6 +99,61 @@ def get_safe_logger():
 
 logger = get_safe_logger()
 
+# 🔥 에러 처리 헬퍼 함수들 import (상대 경로 우선)
+try:
+    # 상대 경로로 import 시도
+    from ...core.exceptions import (
+        handle_step_initialization_error,
+        handle_dependency_injection_error,
+        handle_data_conversion_error,
+        handle_central_hub_error,
+        create_step_error_response,
+        validate_step_environment,
+        log_step_performance
+    )
+    EXCEPTION_HELPERS_AVAILABLE = True
+    logger.info("✅ 상대 경로로 exceptions import 성공")
+except ImportError:
+    try:
+        # 절대 경로로 import 시도
+        from app.core.exceptions import (
+            handle_step_initialization_error,
+            handle_dependency_injection_error,
+            handle_data_conversion_error,
+            handle_central_hub_error,
+            create_step_error_response,
+            validate_step_environment,
+            log_step_performance
+        )
+        EXCEPTION_HELPERS_AVAILABLE = True
+        logger.info("✅ 절대 경로로 exceptions import 성공")
+    except ImportError:
+        EXCEPTION_HELPERS_AVAILABLE = False
+        logger.warning("⚠️ exceptions import 실패 - 폴백 함수들 사용")
+        # 폴백 함수들 정의
+        def handle_step_initialization_error(step_name, error, context=None):
+            return {'success': False, 'error': 'INIT_ERROR', 'message': str(error)}
+        
+        def handle_dependency_injection_error(step_name, service_name, error):
+            return {'success': False, 'error': 'DI_ERROR', 'message': str(error)}
+        
+        def handle_data_conversion_error(step_name, conversion_type, error, data_info=None):
+            return {'success': False, 'error': 'CONVERSION_ERROR', 'message': str(error)}
+        
+        def handle_central_hub_error(step_name, operation, error):
+            return {'success': False, 'error': 'CENTRAL_HUB_ERROR', 'message': str(error)}
+        
+        def create_step_error_response(step_name, error, operation="unknown"):
+            return {'success': False, 'error': 'STEP_ERROR', 'message': str(error)}
+        
+        def validate_step_environment(step_name):
+            return {'success': True, 'step_name': step_name, 'checks': {}}
+        
+        def log_step_performance(step_name, operation, start_time, success, error=None):
+            return {'step_name': step_name, 'operation': operation, 'success': success}
+
+# 중복 제거 - 상단에서 이미 정의됨
+
 # ==============================================
 # 🔥 Central Hub DI Container 안전 import (순환참조 방지)
 # ==============================================
@@ -144,7 +163,16 @@ def _get_central_hub_container():
     """Central Hub DI Container 안전한 동적 해결"""
     try:
         import importlib
-        module = importlib.import_module('app.core.di_container')
+        # 상대 경로로 import 시도
+        try:
+            module = importlib.import_module('...core.di_container', package=__package__)
+        except (ImportError, ValueError):
+            try:
+                # 절대 경로로 import 시도
+                module = importlib.import_module('app.core.di_container')
+            except ImportError:
+                return None
+        
         get_global_fn = getattr(module, 'get_global_container', None)
         if get_global_fn:
             return get_global_fn()
@@ -1337,111 +1365,11 @@ def enhance_base_step_mixin_init(original_init):
     return enhanced_init
 
 # ==============================================
-# 🔥 사용법 - BaseStepMixin 클래스에 적용
+# 🔥 BaseStepMixin 클래스 정의 (통합된 버전)
 # ==============================================
 
-# BaseStepMixin 클래스 정의에서 __init__ 메서드에 다음 코드 추가:
-
-class BaseStepMixin:
-        
-    def __init__(self, device: str = "auto", strict_mode: bool = False, **kwargs):
-        """BaseStepMixin 초기화 - PropertyInjectionMixin 기능 직접 내장"""
-        try:
-            # 🔥 1. PropertyInjectionMixin 기능을 직접 내장
-            self._di_container = None
-            self.central_hub_container = None
-            self.di_container = None  # 기존 호환성
-            
-            # 🔥 2. 의존성 주입된 서비스들 직접 선언
-            self.model_loader = None
-            self.memory_manager = None
-            self.data_converter = None
-            
-            # 🔥 3. 기존 BaseStepMixin 초기화 코드는 그대로 유지
-            self.config = self._create_central_hub_config(**kwargs)
-            # 🔥 수정: step_name 중복 전달 방지 - kwargs에서 제거
-            if 'step_name' in kwargs:
-                self.step_name = kwargs.pop('step_name')
-            else:
-                self.step_name = self.__class__.__name__
-            self.step_id = kwargs.get('step_id', getattr(self, 'STEP_ID', 0))
-            
-            # Logger 설정 (제일 먼저)
-            self.logger = logging.getLogger(f"steps.{self.step_name}")
-            if not self.logger.handlers:
-                handler = logging.StreamHandler()
-                formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-                handler.setFormatter(formatter)
-                self.logger.addHandler(handler)
-                self.logger.setLevel(logging.INFO)
-
-            # 🔥 의존성 주입 상태 추적 (Central Hub 기반)
-            self.dependencies_injected = {
-                'model_loader': False,
-                'memory_manager': False,
-                'data_converter': False,
-                'central_hub_container': False
-            }
-
-            # 기본 속성들 초기화
-            self.device = device if device != "auto" else ("mps" if TORCH_AVAILABLE and MPS_AVAILABLE else "cpu")
-            self.strict_mode = strict_mode
-            self.is_initialized = False
-            self.is_ready = False
-            self.has_model = False
-            self.model_loaded = False
-            self.warmup_completed = False
-
-            # GitHub 호환 속성들 (Central Hub 기반)
-            self.model_interface = None
-
-            # 성능 통계 초기화
-            self._initialize_performance_stats()
-
-            # 🔥 DetailedDataSpec 정보 저장
-            self.detailed_data_spec = self._load_detailed_data_spec_from_kwargs(**kwargs)
-            
-            # 🔥 Central Hub 기반 의존성 관리자 (순환참조 해결)
-            self.dependency_manager = CentralHubDependencyManager(self.step_name)
-            self.dependency_manager.set_step_instance(self)
-
-            # 시스템 정보
-            self.is_m3_max = IS_M3_MAX
-            self.memory_gb = MEMORY_GB
-            self.conda_info = CONDA_INFO
-            
-            # GitHub 호환성을 위한 속성들
-            self.github_compatible = True
-            self.real_ai_pipeline_ready = False
-            self.process_method_signature = self.config.process_method_signature
-            
-            # Central Hub 호환 성능 메트릭
-            self.performance_metrics = CentralHubPerformanceMetrics()
-            
-            # 🔥 DetailedDataSpec 상태
-            self.data_conversion_ready = self._validate_data_conversion_readiness()
-            
-            # 환경 최적화 적용
-            self._apply_central_hub_environment_optimization()
-            
-            # 🔥 4. PropertyInjectionMixin 기능 직접 구현 - Central Hub DI Container 자동 연동
-            self._auto_connect_central_hub()
-            
-            self.logger.info(f"✅ {self.step_name} 초기화 완료 (PropertyInjectionMixin 기능 내장)")
-            
-        except Exception as e:
-            self._central_hub_emergency_setup(e)
-
-    def _auto_connect_central_hub(self):
-        """Central Hub DI Container 자동 연결 - PropertyInjectionMixin 기능 대체"""
-        try:
-            container = _get_central_hub_container()
-            if container:
-                self.set_di_container(container)
-                self.logger.debug(f"✅ {self.step_name} Central Hub 자동 연결 완료")
-        except Exception as e:
-            # 오류 발생 시 조용히 무시 (의존성 주입은 선택사항)
-            self.logger.debug(f"Central Hub 자동 연결 실패: {e}")
+# 중복된 클래스 정의 제거 - 하나의 완벽한 클래스로 통합
+# 이 부분은 두 번째 클래스 정의에서 처리됨
 
     def set_di_container(self, container):
         """DI Container 설정 - PropertyInjectionMixin 기능 내장"""
@@ -1568,7 +1496,7 @@ def fix_step_attribute_errors(step_instance):
         }
 
 # ==============================================
-# 🔥 Export
+# 🔥 메인 BaseStepMixin 클래스 (통합된 버전)
 # ==============================================
 
 class BaseStepMixin:
@@ -1912,32 +1840,42 @@ class BaseStepMixin:
             self.logger.warning("⚠️ Central Hub Container 사용 불가")
 
     def set_model_loader(self, model_loader):
-        """ModelLoader 의존성 주입 (Central Hub 호환)"""
-        self.model_loader = model_loader
-        
-        # 🔥 Step별 모델 인터페이스 생성
-        if hasattr(model_loader, 'create_step_interface'):
-            self.model_interface = model_loader.create_step_interface(self.step_name)
-            self.logger.debug("✅ Step 모델 인터페이스 생성 완료")
-        
-        # 🔥 체크포인트 로딩 테스트
-        if hasattr(model_loader, 'validate_di_container_integration'):
-            validation_result = model_loader.validate_di_container_integration()
-            if validation_result.get('di_container_available', False):
-                self.logger.debug("✅ ModelLoader Central Hub 연동 확인됨")
-        
-        # 의존성 상태 업데이트
-        self.dependencies_injected['model_loader'] = True
-        if hasattr(self, 'dependency_manager') and self.dependency_manager:
-            self.dependency_manager.dependency_status.model_loader = True
-            self.dependency_manager.dependency_status.base_initialized = True
-        
-        self.has_model = True
-        self.model_loaded = True
-        self.real_ai_pipeline_ready = True
-        
-        self.logger.info("✅ ModelLoader 의존성 주입 완료 (Central Hub 호환)")
-        return True
+        """ModelLoader 의존성 주입 (Central Hub 호환) - 동적 타입 검사"""
+        try:
+            # 동적 타입 검사
+            if not hasattr(model_loader, 'load_model_for_step'):
+                self.logger.error("❌ ModelLoader 인터페이스가 올바르지 않습니다")
+                return False
+            
+            self.model_loader = model_loader
+            
+            # 🔥 Step별 모델 인터페이스 생성
+            if hasattr(model_loader, 'create_step_interface'):
+                self.model_interface = model_loader.create_step_interface(self.step_name)
+                self.logger.debug("✅ Step 모델 인터페이스 생성 완료")
+            
+            # 🔥 체크포인트 로딩 테스트
+            if hasattr(model_loader, 'validate_di_container_integration'):
+                validation_result = model_loader.validate_di_container_integration()
+                if validation_result.get('di_container_available', False):
+                    self.logger.debug("✅ ModelLoader Central Hub 연동 확인됨")
+            
+            # 의존성 상태 업데이트
+            self.dependencies_injected['model_loader'] = True
+            if hasattr(self, 'dependency_manager') and self.dependency_manager:
+                self.dependency_manager.dependency_status.model_loader = True
+                self.dependency_manager.dependency_status.base_initialized = True
+            
+            self.has_model = True
+            self.model_loaded = True
+            self.real_ai_pipeline_ready = True
+            
+            self.logger.info("✅ ModelLoader 의존성 주입 완료 (Central Hub 호환)")
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"❌ ModelLoader 의존성 주입 실패: {e}")
+            return False
 
     def set_memory_manager(self, memory_manager):
         """MemoryManager 의존성 주입 (Central Hub 호환)"""
@@ -2138,15 +2076,21 @@ class BaseStepMixin:
 
     def _run_ai_inference(self, input_data: Dict[str, Any]) -> Dict[str, Any]:
         """🔥 실제 AI 추론 실행 (Central Hub 기반) - 상세 시간 측정"""
-        # 성능 측정 유틸리티 import
+        # 성능 측정 유틸리티 import (상대 경로 우선)
         try:
-            from app.ai_pipeline.utils.performance_metrics import create_step_timer, log_step_performance
+            # 상대 경로로 import 시도
+            from ...utils.performance_metrics import create_step_timer, log_step_performance
             timer = create_step_timer(self.step_name, getattr(self, 'step_id', 0))
         except ImportError:
-            # 폴백: 기본 시간 측정
-            timer = None
-            total_start_time = time.time()
-            timing_details = {}
+            try:
+                # 절대 경로로 import 시도
+                from app.ai_pipeline.utils.performance_metrics import create_step_timer, log_step_performance
+                timer = create_step_timer(self.step_name, getattr(self, 'step_id', 0))
+            except ImportError:
+                # 폴백: 기본 시간 측정
+                timer = None
+                total_start_time = time.time()
+                timing_details = {}
         
         try:
             # 🔥 1단계: 의존성 확인 및 모델 로딩
@@ -5112,9 +5056,3 @@ __all__ = [
     'IS_M3_MAX',
     'MEMORY_GB'
 ]
-
-# ==============================================
-# 🔥 모듈 로드 완료 (로그 출력 제거)
-# ==============================================
-
-# 모듈 레벨 로그 출력 제거 - 중복 출력 방지# backend/app/ai_pipeline/steps/base_step_mixin.py

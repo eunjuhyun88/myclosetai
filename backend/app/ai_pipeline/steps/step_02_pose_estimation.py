@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 
 # 🔥 공통 imports 시스템 사용
 try:
-    from app.ai_pipeline.utils.common_imports import (
+    from ..utils.common_imports import (
         # 표준 라이브러리
         os, sys, gc, time, asyncio, logging, threading, traceback,
         hashlib, json, base64, math, warnings, np,
@@ -80,76 +80,67 @@ except ImportError:
     MPS_AVAILABLE = False
     EXCEPTIONS_AVAILABLE = False
     
+    # MPS_AVAILABLE 정의 추가
+    try:
+        import torch
+        MPS_AVAILABLE = torch.backends.mps.is_available()
+    except ImportError:
+        MPS_AVAILABLE = False
+    
     def _get_central_hub_container():
         return None
 
 # 🔥 분리된 모듈들 import - 숫자로 시작하는 디렉토리명 문제 해결
 REAL_MODELS_AVAILABLE = False  # 전역 변수로 정의
 
-# 🔥 실제 AI 모델들 import - config 모듈과 독립적으로 실행
+# 🔥 실제 AI 모델들 import - 간단한 방식
 try:
-    from app.ai_pipeline.models.model_architectures import (
+    # 상대 경로로 import (가장 안전한 방법)
+    from ..models.model_architectures import (
         HRNetPoseModel,
         OpenPoseModel,
         ModelArchitectureFactory,
         CompleteModelWrapper
     )
     REAL_MODELS_AVAILABLE = True
-    print("✅ 실제 AI 모델 import 성공")
+    print("✅ 실제 AI 모델 import 성공 (상대 경로)")
 except ImportError:
-    # 폴백: 상대 경로로 import 시도
     try:
-        import sys
-        import os
-        current_dir = os.path.dirname(os.path.abspath(__file__))
-        models_path = os.path.join(current_dir, '..', 'models')
-        if models_path not in sys.path:
-            sys.path.append(models_path)
-        from model_architectures import (
+        # 절대 경로로 import 시도
+        from ...models.model_architectures import (
             HRNetPoseModel,
             OpenPoseModel,
             ModelArchitectureFactory,
             CompleteModelWrapper
         )
         REAL_MODELS_AVAILABLE = True
-        print("✅ 실제 AI 모델 import 성공 (상대 경로)")
+        print("✅ 실제 AI 모델 import 성공 (절대 경로)")
     except ImportError:
-        try:
-            # utils에서 import 시도
-            from app.ai_pipeline.utils import (
-                HRNetPoseModel,
-                OpenPoseModel,
-                ModelArchitectureFactory,
-                CompleteModelWrapper
-            )
-            REAL_MODELS_AVAILABLE = True
-            print("✅ 실제 AI 모델 import 성공 (utils)")
-        except ImportError:
-            # 최종 폴백: Mock 모델들 생성
-            print("⚠️ 실제 AI 모델 import 실패 - Mock 모델 사용")
-            REAL_MODELS_AVAILABLE = False
-            
-            # Mock 모델 클래스들 정의
-            class HRNetPoseModel:
-                def __init__(self):
-                    self.name = "MockHRNetPoseModel"
-                def detect_pose(self, image):
-                    return {"status": "mock", "model": "HRNetPoseModel"}
-            
-            class OpenPoseModel:
-                def __init__(self):
-                    self.name = "MockOpenPoseModel"
-                def detect_pose(self, image):
-                    return {"status": "mock", "model": "OpenPoseModel"}
-            
-            class ModelArchitectureFactory:
-                @staticmethod
-                def create_model(model_type):
-                    return {"status": "mock", "model_type": model_type}
-            
-            class CompleteModelWrapper:
-                def __init__(self):
-                    self.name = "MockCompleteModelWrapper"
+        # Mock 모델들 생성
+        print("⚠️ 실제 AI 모델 import 실패 - Mock 모델 사용")
+        REAL_MODELS_AVAILABLE = False
+        
+        # Mock 모델 클래스들 정의
+        class HRNetPoseModel:
+            def __init__(self):
+                self.name = "MockHRNetPoseModel"
+            def detect_pose(self, image):
+                return {"status": "mock", "model": "HRNetPoseModel"}
+        
+        class OpenPoseModel:
+            def __init__(self):
+                self.name = "MockOpenPoseModel"
+            def detect_pose(self, image):
+                return {"status": "mock", "model": "OpenPoseModel"}
+        
+        class ModelArchitectureFactory:
+            @staticmethod
+            def create_model(model_type):
+                return {"status": "mock", "model_type": model_type}
+        
+        class CompleteModelWrapper:
+            def __init__(self):
+                self.name = "MockCompleteModelWrapper"
 
 # 🔥 config 모듈 import - 더 안전한 방식
 try:
@@ -393,16 +384,8 @@ except ImportError as e:
         def __init__(self):
             pass
 
-# 기존 완전한 BaseStepMixin import
-try:
-    from app.ai_pipeline.steps.base.base_step_mixin import BaseStepMixin
-except ImportError:
-    try:
-        from .base.base_step_mixin import BaseStepMixin
-    except ImportError:
-        class BaseStepMixin:
-            def __init__(self, **kwargs):
-                pass
+# BaseStepMixin import
+from .base.base_step_mixin import BaseStepMixin
 
 class PoseEstimationStep(BaseStepMixin):
     """
@@ -466,19 +449,28 @@ class PoseEstimationStep(BaseStepMixin):
             }
             
             # 앙상블 시스템 초기화
-            if PoseEstimationEnsembleSystem:
-                self.ensemble_system = PoseEstimationEnsembleSystem()
-                self.ensemble_enabled = True
-                self.ensemble_manager = self.ensemble_system
-            else:
+            try:
+                if 'PoseEstimationEnsembleSystem' in globals() and PoseEstimationEnsembleSystem:
+                    self.ensemble_system = PoseEstimationEnsembleSystem()
+                    self.ensemble_enabled = True
+                    self.ensemble_manager = self.ensemble_system
+                else:
+                    self.ensemble_system = None
+                    self.ensemble_enabled = False
+                    self.ensemble_manager = None
+            except Exception:
                 self.ensemble_system = None
                 self.ensemble_enabled = False
                 self.ensemble_manager = None
             
             # 분석기 초기화
-            if PoseAnalyzer:
-                self.analyzer = PoseAnalyzer()
-            else:
+            # Pose Analyzer 초기화
+            try:
+                if 'PoseAnalyzer' in globals() and PoseAnalyzer:
+                    self.analyzer = PoseAnalyzer()
+                else:
+                    self.analyzer = None
+            except Exception:
                 self.analyzer = None
             
             # 성능 통계 초기화
@@ -522,7 +514,12 @@ class PoseEstimationStep(BaseStepMixin):
                     else:
                         # numpy나 PIL 이미지를 tensor로 변환
                         if hasattr(image, 'shape'):
-                            input_tensor = torch.from_numpy(image).float().unsqueeze(0)
+                            input_tensor = torch.from_numpy(image).float()
+                            # 이미 배치 차원이 있는지 확인
+                            if input_tensor.dim() == 3:  # (C, H, W)
+                                input_tensor = input_tensor.unsqueeze(0)  # (1, C, H, W)
+                            elif input_tensor.dim() == 4:  # (B, C, H, W)
+                                pass  # 이미 배치 차원이 있음
                         else:
                             input_tensor = torch.randn(1, 3, 512, 512)
                     
@@ -565,7 +562,12 @@ class PoseEstimationStep(BaseStepMixin):
                     else:
                         # numpy나 PIL 이미지를 tensor로 변환
                         if hasattr(image, 'shape'):
-                            input_tensor = torch.from_numpy(image).float().unsqueeze(0)
+                            input_tensor = torch.from_numpy(image).float()
+                            # 이미 배치 차원이 있는지 확인
+                            if input_tensor.dim() == 3:  # (C, H, W)
+                                input_tensor = input_tensor.unsqueeze(0)  # (1, C, H, W)
+                            elif input_tensor.dim() == 4:  # (B, C, H, W)
+                                pass  # 이미 배치 차원이 있음
                         else:
                             input_tensor = torch.randn(1, 3, 512, 512)
                     
@@ -610,9 +612,13 @@ class PoseEstimationStep(BaseStepMixin):
                         if isinstance(image, torch.Tensor):
                             input_tensor = image
                         else:
-                            # numpy나 PIL 이미지를 tensor로 변환
                             if hasattr(image, 'shape'):
-                                input_tensor = torch.from_numpy(image).float().unsqueeze(0)
+                                input_tensor = torch.from_numpy(image).float()
+                                # 이미 배치 차원이 있는지 확인
+                                if input_tensor.dim() == 3:  # (C, H, W)
+                                    input_tensor = input_tensor.unsqueeze(0)  # (1, C, H, W)
+                                elif input_tensor.dim() == 4:  # (B, C, H, W)
+                                    pass  # 이미 배치 차원이 있음
                             else:
                                 input_tensor = torch.randn(1, 3, 512, 512)
                         
@@ -643,7 +649,12 @@ class PoseEstimationStep(BaseStepMixin):
                                 input_tensor = image
                             else:
                                 if hasattr(image, 'shape'):
-                                    input_tensor = torch.from_numpy(image).float().unsqueeze(0)
+                                    input_tensor = torch.from_numpy(image).float()
+                                    # 이미 배치 차원이 있는지 확인
+                                    if input_tensor.dim() == 3:  # (C, H, W)
+                                        input_tensor = input_tensor.unsqueeze(0)  # (1, C, H, W)
+                                    elif input_tensor.dim() == 4:  # (B, C, H, W)
+                                        pass  # 이미 배치 차원이 있음
                                 else:
                                     input_tensor = torch.randn(1, 3, 512, 512)
                             

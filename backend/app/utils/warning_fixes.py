@@ -4,10 +4,12 @@ def apply_warning_fixes():
     try:
         # SmartMapper 강제 연동
         from app.ai_pipeline.utils.smart_model_mapper import get_global_smart_mapper
-        from app.ai_pipeline.utils.model_loader import get_global_model_loader
+        # from app.ai_pipeline.utils.model_loader import get_global_model_loader  # 이 파일은 비어있음
+        from app.ai_pipeline.models.model_loader import CentralModelLoader
         
         smart_mapper = get_global_smart_mapper()
-        model_loader = get_global_model_loader()
+        # model_loader = get_global_model_loader()  # 이 함수는 존재하지 않음
+        model_loader = CentralModelLoader() if CentralModelLoader else None
         
         if smart_mapper and model_loader:
             # 누락된 모델들 자동 추가

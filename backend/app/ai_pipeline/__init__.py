@@ -59,7 +59,7 @@ except ImportError:
 
 if TYPE_CHECKING:
     # 오직 타입 체크 시에만 import
-    from .steps.base_step_mixin import BaseStepMixin
+    from .steps.base.base_step_mixin import BaseStepMixin
     from .models.model_loader import ModelLoader
     from .utils.memory_manager import MemoryManager
     from .utils.data_converter import DataConverter
