@@ -1,58 +1,180 @@
 """
-포즈 추정 관련 상수 정의
+Pose Estimation Constants
+포즈 추정에 필요한 상수들을 정의합니다.
 """
 
-# 키포인트 연결 구조 (스켈레톤)
-SKELETON_CONNECTIONS = [
-    (0, 1), (1, 2), (2, 3), (3, 4), (1, 5), (5, 6), (6, 7), (1, 8),
-    (8, 9), (9, 10), (10, 11), (8, 12), (12, 13), (13, 14), (0, 15),
-    (15, 17), (0, 16), (16, 18)
-]
-
-# 키포인트 색상 매핑
-KEYPOINT_COLORS = [
-    (255, 0, 0), (255, 85, 0), (255, 170, 0), (255, 255, 0), (170, 255, 0),
-    (85, 255, 0), (0, 255, 0), (0, 255, 85), (0, 255, 170), (0, 255, 255),
-    (0, 170, 255), (0, 85, 255), (0, 0, 255), (85, 0, 255), (170, 0, 255),
-    (255, 0, 255), (255, 0, 170), (255, 0, 85), (255, 0, 0)
-]
-
-# COCO 17 키포인트 정의 (MediaPipe, YOLOv8 표준)
-COCO_17_KEYPOINTS_LIST = [
-    "nose", "left_eye", "right_eye", "left_ear", "right_ear",
-    "left_shoulder", "right_shoulder", "left_elbow", "right_elbow",
-    "left_wrist", "right_wrist", "left_hip", "right_hip",
-    "left_knee", "right_knee", "left_ankle", "right_ankle"
-]
-
-# OpenPose 18 키포인트 정의 
-OPENPOSE_18_KEYPOINTS_LIST = [
-    "nose", "neck", "right_shoulder", "right_elbow", "right_wrist",
-    "left_shoulder", "left_elbow", "left_wrist", "middle_hip", "right_hip", 
-    "right_knee", "right_ankle", "left_hip", "left_knee", "left_ankle",
-    "right_eye", "left_eye", "right_ear", "left_ear"
-]
-
-# 기본 설정값들
-DEFAULT_INPUT_SIZE = (512, 512)
-DEFAULT_CONFIDENCE_THRESHOLD = 0.7
-DEFAULT_QUALITY_THRESHOLD = 0.8
-
-# 모델별 가중치 (앙상블용)
-MODEL_WEIGHTS = {
-    'hrnet': 0.4,
-    'openpose': 0.3,
-    'yolo_pose': 0.2,
-    'mediapipe': 0.1
+# OpenPose 상수
+OPENPOSE_CONSTANTS = {
+    "DEFAULT_NUM_POINTS": 18,
+    "MIN_NUM_POINTS": 15,
+    "MAX_NUM_POINTS": 25,
+    "DEFAULT_CONFIDENCE_THRESHOLD": 0.5,
+    "MIN_CONFIDENCE_THRESHOLD": 0.1,
+    "MAX_CONFIDENCE_THRESHOLD": 0.9,
+    "DEFAULT_NMS_THRESHOLD": 0.4,
+    "MIN_NMS_THRESHOLD": 0.1,
+    "MAX_NMS_THRESHOLD": 0.9,
+    "DEFAULT_MAX_PEOPLE": 10,
+    "MIN_MAX_PEOPLE": 1,
+    "MAX_MAX_PEOPLE": 50
 }
 
-# 의류 피팅에 중요한 관절들
-CLOTHING_IMPORTANT_JOINTS = [5, 6, 7, 8, 9, 10, 12, 13]  # 어깨, 팔꿈치, 손목, 엉덩이, 무릎
+# HRNet 상수
+HRNET_CONSTANTS = {
+    "DEFAULT_INPUT_SIZE": 256,
+    "MIN_INPUT_SIZE": 128,
+    "MAX_INPUT_SIZE": 512,
+    "DEFAULT_OUTPUT_SIZE": 64,
+    "MIN_OUTPUT_SIZE": 32,
+    "MAX_OUTPUT_SIZE": 128,
+    "DEFAULT_NUM_LAYERS": 50,
+    "MIN_NUM_LAYERS": 18,
+    "MAX_NUM_LAYERS": 152,
+    "DEFAULT_NUM_CHANNELS": 64,
+    "MIN_NUM_CHANNELS": 32,
+    "MAX_NUM_CHANNELS": 256
+}
 
-# 좌우 대칭 관절 쌍
-SYMMETRIC_JOINT_PAIRS = [
-    (5, 6),   # left_shoulder, right_shoulder
-    (7, 8),   # left_elbow, right_elbow
-    (9, 10),  # left_wrist, right_wrist
-    (12, 13)  # left_hip, right_hip
+# 포즈 키포인트 상수
+POSE_KEYPOINTS = {
+    "NOSE": 0,
+    "LEFT_EYE": 1,
+    "RIGHT_EYE": 2,
+    "LEFT_EAR": 3,
+    "RIGHT_EAR": 4,
+    "LEFT_SHOULDER": 5,
+    "RIGHT_SHOULDER": 6,
+    "LEFT_ELBOW": 7,
+    "RIGHT_ELBOW": 8,
+    "LEFT_WRIST": 9,
+    "RIGHT_WRIST": 10,
+    "LEFT_HIP": 11,
+    "RIGHT_HIP": 12,
+    "LEFT_KNEE": 13,
+    "RIGHT_KNEE": 14,
+    "LEFT_ANKLE": 15,
+    "RIGHT_ANKLE": 16,
+    "NECK": 17
+}
+
+# 포즈 연결 상수
+POSE_CONNECTIONS = [
+    (POSE_KEYPOINTS["NOSE"], POSE_KEYPOINTS["LEFT_EYE"]),
+    (POSE_KEYPOINTS["NOSE"], POSE_KEYPOINTS["RIGHT_EYE"]),
+    (POSE_KEYPOINTS["LEFT_EYE"], POSE_KEYPOINTS["LEFT_EAR"]),
+    (POSE_KEYPOINTS["RIGHT_EYE"], POSE_KEYPOINTS["RIGHT_EAR"]),
+    (POSE_KEYPOINTS["LEFT_SHOULDER"], POSE_KEYPOINTS["RIGHT_SHOULDER"]),
+    (POSE_KEYPOINTS["LEFT_SHOULDER"], POSE_KEYPOINTS["LEFT_ELBOW"]),
+    (POSE_KEYPOINTS["RIGHT_SHOULDER"], POSE_KEYPOINTS["RIGHT_ELBOW"]),
+    (POSE_KEYPOINTS["LEFT_ELBOW"], POSE_KEYPOINTS["LEFT_WRIST"]),
+    (POSE_KEYPOINTS["RIGHT_ELBOW"], POSE_KEYPOINTS["RIGHT_WRIST"]),
+    (POSE_KEYPOINTS["LEFT_SHOULDER"], POSE_KEYPOINTS["LEFT_HIP"]),
+    (POSE_KEYPOINTS["RIGHT_SHOULDER"], POSE_KEYPOINTS["RIGHT_HIP"]),
+    (POSE_KEYPOINTS["LEFT_HIP"], POSE_KEYPOINTS["RIGHT_HIP"]),
+    (POSE_KEYPOINTS["LEFT_HIP"], POSE_KEYPOINTS["LEFT_KNEE"]),
+    (POSE_KEYPOINTS["RIGHT_HIP"], POSE_KEYPOINTS["RIGHT_KNEE"]),
+    (POSE_KEYPOINTS["LEFT_KNEE"], POSE_KEYPOINTS["LEFT_ANKLE"]),
+    (POSE_KEYPOINTS["RIGHT_KNEE"], POSE_KEYPOINTS["RIGHT_ANKLE"])
 ]
+
+# 스켈레톤 연결 (시각화용)
+SKELETON_CONNECTIONS = POSE_CONNECTIONS
+
+# 키포인트 색상 (시각화용)
+KEYPOINT_COLORS = {
+    "NOSE": (255, 0, 0),           # 빨강
+    "LEFT_EYE": (0, 255, 0),       # 초록
+    "RIGHT_EYE": (0, 255, 0),      # 초록
+    "LEFT_EAR": (0, 0, 255),       # 파랑
+    "RIGHT_EAR": (0, 0, 255),      # 파랑
+    "LEFT_SHOULDER": (255, 255, 0), # 노랑
+    "RIGHT_SHOULDER": (255, 255, 0), # 노랑
+    "LEFT_ELBOW": (255, 0, 255),   # 마젠타
+    "RIGHT_ELBOW": (255, 0, 255),  # 마젠타
+    "LEFT_WRIST": (0, 255, 255),   # 시안
+    "RIGHT_WRIST": (0, 255, 255),  # 시안
+    "LEFT_HIP": (128, 0, 128),     # 보라
+    "RIGHT_HIP": (128, 0, 128),    # 보라
+    "LEFT_KNEE": (255, 165, 0),    # 주황
+    "RIGHT_KNEE": (255, 165, 0),   # 주황
+    "LEFT_ANKLE": (139, 69, 19),   # 갈색
+    "RIGHT_ANKLE": (139, 69, 19),  # 갈색
+    "NECK": (255, 192, 203)        # 분홍
+}
+
+# 의류에 중요한 관절들
+CLOTHING_IMPORTANT_JOINTS = [
+    POSE_KEYPOINTS["LEFT_SHOULDER"],
+    POSE_KEYPOINTS["RIGHT_SHOULDER"],
+    POSE_KEYPOINTS["LEFT_HIP"],
+    POSE_KEYPOINTS["RIGHT_HIP"],
+    POSE_KEYPOINTS["LEFT_KNEE"],
+    POSE_KEYPOINTS["RIGHT_KNEE"]
+]
+
+# 대칭 관절 쌍
+SYMMETRIC_JOINT_PAIRS = [
+    (POSE_KEYPOINTS["LEFT_EYE"], POSE_KEYPOINTS["RIGHT_EYE"]),
+    (POSE_KEYPOINTS["LEFT_EAR"], POSE_KEYPOINTS["RIGHT_EAR"]),
+    (POSE_KEYPOINTS["LEFT_SHOULDER"], POSE_KEYPOINTS["RIGHT_SHOULDER"]),
+    (POSE_KEYPOINTS["LEFT_ELBOW"], POSE_KEYPOINTS["RIGHT_ELBOW"]),
+    (POSE_KEYPOINTS["LEFT_WRIST"], POSE_KEYPOINTS["RIGHT_WRIST"]),
+    (POSE_KEYPOINTS["LEFT_HIP"], POSE_KEYPOINTS["RIGHT_HIP"]),
+    (POSE_KEYPOINTS["LEFT_KNEE"], POSE_KEYPOINTS["RIGHT_KNEE"]),
+    (POSE_KEYPOINTS["LEFT_ANKLE"], POSE_KEYPOINTS["RIGHT_ANKLE"])
+]
+
+# 품질 임계값
+QUALITY_THRESHOLDS = {
+    "EXCELLENT": 0.9,
+    "GOOD": 0.7,
+    "ACCEPTABLE": 0.5,
+    "POOR": 0.3,
+    "MIN_ACCEPTABLE": 0.4
+}
+
+# 포즈 모델 타입
+POSE_MODEL_TYPES = {
+    "OPENPOSE": "openpose",
+    "HRNET": "hrnet",
+    "ALPHA_POSE": "alpha_pose",
+    "MMPOSE": "mmpose",
+    "HYBRID": "hybrid"
+}
+
+# 입력 이미지 상수
+INPUT_IMAGE_CONSTANTS = {
+    "DEFAULT_WIDTH": 640,
+    "MIN_WIDTH": 256,
+    "MAX_WIDTH": 1920,
+    "DEFAULT_HEIGHT": 640,
+    "MIN_HEIGHT": 256,
+    "MAX_HEIGHT": 1920,
+    "DEFAULT_CHANNELS": 3,
+    "MIN_CHANNELS": 1,
+    "MAX_CHANNELS": 4
+}
+
+# 출력 포맷 상수
+OUTPUT_FORMAT_CONSTANTS = {
+    "JSON": "json",
+    "NUMPY": "numpy",
+    "TENSOR": "tensor",
+    "VISUALIZATION": "visualization",
+    "ALL": "all"
+}
+
+# 기본 설정
+DEFAULT_CONFIG = {
+    "model_type": POSE_MODEL_TYPES["OPENPOSE"],
+    "num_points": OPENPOSE_CONSTANTS["DEFAULT_NUM_POINTS"],
+    "confidence_threshold": OPENPOSE_CONSTANTS["DEFAULT_CONFIDENCE_THRESHOLD"],
+    "nms_threshold": OPENPOSE_CONSTANTS["DEFAULT_NMS_THRESHOLD"],
+    "max_people": OPENPOSE_CONSTANTS["DEFAULT_MAX_PEOPLE"],
+    "input_size": HRNET_CONSTANTS["DEFAULT_INPUT_SIZE"],
+    "output_size": HRNET_CONSTANTS["DEFAULT_OUTPUT_SIZE"],
+    "quality_threshold": QUALITY_THRESHOLDS["ACCEPTABLE"],
+    "input_width": INPUT_IMAGE_CONSTANTS["DEFAULT_WIDTH"],
+    "input_height": INPUT_IMAGE_CONSTANTS["DEFAULT_HEIGHT"],
+    "output_format": OUTPUT_FORMAT_CONSTANTS["JSON"]
+}

@@ -389,31 +389,35 @@ class AIVirtualTryOnPipeline:
 
     def _get_step_classes(self) -> Dict[str, type]:
         """Step 클래스 매핑 - 실제 import에 맞춤"""
-        # 실제 프로젝트에서는 이렇게 import
+        # AI Steps import (선택적)
         try:
-            from app.ai_pipeline.steps.step_01_human_parsing import HumanParsingStep
-            from app.ai_pipeline.steps.step_02_pose_estimation import PoseEstimationStep
-            from app.ai_pipeline.steps.step_03_cloth_segmentation import ClothSegmentationStep
-            from app.ai_pipeline.steps.step_04_geometric_matching import GeometricMatchingStep
-            from app.ai_pipeline.steps.step_05_cloth_warping import ClothWarpingStep
-            from app.ai_pipeline.steps.step_06_virtual_fitting import VirtualFittingStep
-            from app.ai_pipeline.steps.step_07_post_processing import PostProcessingStep
-            from app.ai_pipeline.steps.step_08_quality_assessment import QualityAssessmentStep
-            
-            return {
-                'human_parsing': HumanParsingStep,
-                'pose_estimation': PoseEstimationStep,
-                'cloth_segmentation': ClothSegmentationStep,
-                'geometric_matching': GeometricMatchingStep,
-                'cloth_warping': ClothWarpingStep,
-                'virtual_fitting': VirtualFittingStep,
-                'post_processing': PostProcessingStep,
-                'quality_assessment': QualityAssessmentStep
-            }
+            from app.ai_pipeline.steps.step_01_human_parsing_models.step_01_human_parsing import HumanParsingStep
+            from app.ai_pipeline.steps.step_02_pose_estimation_models.step_02_pose_estimation import PoseEstimationStep
+            from app.ai_pipeline.steps.step_03_cloth_segmentation_models.step_03_cloth_segmentation import ClothSegmentationStep
+            from app.ai_pipeline.steps.step_04_geometric_matching_models.step_04_geometric_matching import GeometricMatchingStep
+            from app.ai_pipeline.steps.step_05_cloth_warping_models.step_05_cloth_warping import ClothWarpingStep
+            from app.ai_pipeline.steps.step_06_virtual_fitting_models.step_06_virtual_fitting import VirtualFittingStep
+            from app.ai_pipeline.steps.post_processing.step_07_post_processing import PostProcessingStep
+            from app.ai_pipeline.steps.step_08_quality_assessment_models.step_08_quality_assessment import QualityAssessmentStep
+            AI_STEPS_AVAILABLE = True
         except ImportError as e:
-            self.logger.warning(f"실제 Step 클래스 import 실패: {e}")
-            # 데모용 더미 클래스들 반환
+            logging.warning(f"AI Steps import 실패: {e}")
+            AI_STEPS_AVAILABLE = False
+
+        # 데모용 더미 클래스들 반환
+        if not AI_STEPS_AVAILABLE:
             return self._get_dummy_step_classes()
+
+        return {
+            'human_parsing': HumanParsingStep,
+            'pose_estimation': PoseEstimationStep,
+            'cloth_segmentation': ClothSegmentationStep,
+            'geometric_matching': GeometricMatchingStep,
+            'cloth_warping': ClothWarpingStep,
+            'virtual_fitting': VirtualFittingStep,
+            'post_processing': PostProcessingStep,
+            'quality_assessment': QualityAssessmentStep
+        }
 
     def _get_dummy_step_classes(self) -> Dict[str, type]:
         """데모용 더미 Step 클래스들"""

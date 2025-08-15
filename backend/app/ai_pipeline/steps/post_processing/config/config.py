@@ -4,8 +4,8 @@
 100% 논문 구현 - 완전한 신경망 구조 지원
 """
 
-from dataclasses import dataclass
-from typing import List, Tuple, Dict, Any
+from dataclasses import dataclass, field
+from typing import List, Tuple, Dict, Any, Optional, Union
 from enum import Enum
 
 class EnhancementMethod(Enum):
@@ -188,12 +188,12 @@ DEFAULT_CHECKPOINT_CONFIG = CheckpointConfig()
 @dataclass
 class CompletePostProcessingConfig:
     """완전한 후처리 설정"""
-    post_processing: PostProcessingConfig = DEFAULT_CONFIG
-    model: ModelConfig = DEFAULT_MODEL_CONFIG
-    performance: PerformanceConfig = DEFAULT_PERFORMANCE_CONFIG
-    quality: QualityAssessmentConfig = DEFAULT_QUALITY_CONFIG
-    advanced: AdvancedProcessingConfig = DEFAULT_ADVANCED_CONFIG
-    checkpoint: CheckpointConfig = DEFAULT_CHECKPOINT_CONFIG
+    post_processing: PostProcessingConfig = field(default_factory=PostProcessingConfig)
+    model: ModelConfig = field(default_factory=ModelConfig)
+    performance: PerformanceConfig = field(default_factory=PerformanceConfig)
+    quality: QualityAssessmentConfig = field(default_factory=QualityAssessmentConfig)
+    advanced: AdvancedProcessingConfig = field(default_factory=AdvancedProcessingConfig)
+    checkpoint: CheckpointConfig = field(default_factory=CheckpointConfig)
 
 # 최종 기본 설정
 COMPLETE_DEFAULT_CONFIG = CompletePostProcessingConfig()

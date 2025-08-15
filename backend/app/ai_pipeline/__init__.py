@@ -59,7 +59,7 @@ except ImportError:
 
 if TYPE_CHECKING:
     # 오직 타입 체크 시에만 import
-    from .steps.base.base_step_mixin import BaseStepMixin
+    from .steps.base.core.base_step_mixin import BaseStepMixin
     from .models.model_loader import ModelLoader
     from .utils.memory_manager import MemoryManager
     from .utils.data_converter import DataConverter
@@ -314,56 +314,56 @@ class DIBasedStepLoader:
         """Step 매핑 설정 (GitHub 구조 기준)"""
         self._step_mapping = {
             'step_01': {
-                'module': 'app.ai_pipeline.steps.step_01_human_parsing',
+                'module': 'app.ai_pipeline.steps.step_01_human_parsing_models.step_01_human_parsing',
                 'class': 'HumanParsingStep',
                 'description': '인체 파싱 - Human Body Parsing',
                 'models': ['SCHP', 'Graphonomy'],
                 'priority': 2
             },
             'step_02': {
-                'module': 'app.ai_pipeline.steps.step_02_pose_estimation',
+                'module': 'app.ai_pipeline.steps.step_02_pose_estimation_models.step_02_pose_estimation',
                 'class': 'PoseEstimationStep',
                 'description': '포즈 추정 - Pose Estimation',
                 'models': ['OpenPose', 'YOLO-Pose'],
                 'priority': 4
             },
             'step_03': {
-                'module': 'app.ai_pipeline.steps.step_03_cloth_segmentation',
+                'module': 'app.ai_pipeline.steps.step_03_cloth_segmentation_models.step_03_cloth_segmentation',
                 'class': 'ClothSegmentationStep',
                 'description': '의류 분할 - Cloth Segmentation',
                 'models': ['U2Net', 'SAM'],
                 'priority': 3
             },
             'step_04': {
-                'module': 'app.ai_pipeline.steps.step_04_geometric_matching',
+                'module': 'app.ai_pipeline.steps.step_04_geometric_matching_models.step_04_geometric_matching',
                 'class': 'GeometricMatchingStep',
                 'description': '기하학적 매칭 - Geometric Matching',
                 'models': ['TPS', 'GMM'],
                 'priority': 7
             },
             'step_05': {
-                'module': 'app.ai_pipeline.steps.step_05_cloth_warping',
+                'module': 'app.ai_pipeline.steps.step_05_cloth_warping_models.step_05_cloth_warping',
                 'class': 'ClothWarpingStep',
                 'description': '의류 변형 - Cloth Warping',
                 'models': ['Advanced Warping'],
                 'priority': 8
             },
             'step_06': {
-                'module': 'app.ai_pipeline.steps.step_06_virtual_fitting',
+                'module': 'app.ai_pipeline.steps.step_06_virtual_fitting_models.step_06_virtual_fitting',
                 'class': 'VirtualFittingStep',
                 'description': '가상 피팅 - Virtual Fitting',
                 'models': ['OOTDiffusion', 'IDM-VTON'],
                 'priority': 1  # 가장 중요
             },
             'step_07': {
-                'module': 'app.ai_pipeline.steps.step_07_post_processing',
+                'module': 'app.ai_pipeline.steps.post_processing.step_07_post_processing',
                 'class': 'PostProcessingStep',
                 'description': '후처리 - Post Processing',
                 'models': ['RealESRGAN', 'Enhancement'],
                 'priority': 5
             },
             'step_08': {
-                'module': 'app.ai_pipeline.steps.step_08_quality_assessment',
+                'module': 'app.ai_pipeline.steps.step_08_quality_assessment_models.step_08_quality_assessment',
                 'class': 'QualityAssessmentStep',
                 'description': '품질 평가 - Quality Assessment',
                 'models': ['CLIP', 'Quality Metrics'],

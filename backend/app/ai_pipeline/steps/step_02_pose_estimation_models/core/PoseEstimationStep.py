@@ -15,7 +15,7 @@ import time
 from pathlib import Path
 from typing import Dict, Any, Optional, List, Tuple, Union
 
-from app.ai_pipeline.steps.base.base_step_mixin import BaseStepMixin
+from app.ai_pipeline.steps.base.core.base_step_mixin import BaseStepMixin
 from app.ai_pipeline.utils.common_imports import (
     np, torch, Image, ImageDraw, ImageFont, cv2
 )

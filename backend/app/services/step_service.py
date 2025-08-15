@@ -78,7 +78,7 @@ if TYPE_CHECKING:
         StepFactory, CentralHubStepMapping, CentralHubStepConfig, 
         CentralHubStepCreationResult, StepType
     )
-    from ..ai_pipeline.steps.base.base_step_mixin import BaseStepMixin
+    from ..ai_pipeline.steps.base.core.base_step_mixin import BaseStepMixin
     from ..ai_pipeline.interface.step_interface import DetailedDataSpecConfig
     from app.core.di_container import CentralHubDIContainer
     from fastapi import UploadFile

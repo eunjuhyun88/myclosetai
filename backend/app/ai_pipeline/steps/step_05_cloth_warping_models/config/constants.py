@@ -1,62 +1,81 @@
 #!/usr/bin/env python3
 """
-Cloth Warping Constants - 의류 변형을 위한 상수 정의
+Cloth Warping Constants
+의류 워핑 상수들
 """
 
-# 이미지 처리 상수
-DEFAULT_IMAGE_SIZE = (512, 512)
-MAX_IMAGE_SIZE = (2048, 2048)
-MIN_IMAGE_SIZE = (64, 64)
-
-# 품질 설정 상수
-QUALITY_LEVELS = {
-    'low': {'resolution': 256, 'iterations': 100},
-    'medium': {'resolution': 512, 'iterations': 200},
-    'high': {'resolution': 1024, 'iterations': 500},
-    'ultra': {'resolution': 2048, 'iterations': 1000}
+# RealVisXL 모델 상수
+REALVISXL_CONSTANTS = {
+    "MODEL_TYPE": "realvisxl_v4",
+    "CHECKPOINT_PATH": "realvisxl_v4.0.safetensors",
+    "DEVICE": "mps",
+    "MAX_RESOLUTION": 1024,
+    "BATCH_SIZE": 1,
+    "NUM_INFERENCE_STEPS": 20,
+    "GUIDANCE_SCALE": 7.5,
+    "STRENGTH": 0.8
 }
 
-# 변형 파라미터 상수
-MAX_SCALE = 3.0
-MIN_SCALE = 0.1
-MAX_ROTATION = 180.0  # 도
-MAX_TRANSLATION = 100.0  # 픽셀
-MAX_SHEAR = 45.0  # 도
-
-# 모델 상수
-DEFAULT_BATCH_SIZE = 1
-MAX_BATCH_SIZE = 8
-DEFAULT_LEARNING_RATE = 0.001
-
-# 파일 포맷 상수
-SUPPORTED_INPUT_FORMATS = ['.jpg', '.jpeg', '.png', '.bmp', '.tiff']
-SUPPORTED_OUTPUT_FORMATS = ['.png', '.jpg', '.tiff']
-
-# 에러 메시지 상수
-ERROR_MESSAGES = {
-    'invalid_image_size': '이미지 크기가 지원 범위를 벗어났습니다',
-    'unsupported_format': '지원하지 않는 이미지 포맷입니다',
-    'model_loading_failed': '모델 로딩에 실패했습니다',
-    'processing_failed': '이미지 처리에 실패했습니다'
+# 워핑 품질 임계값
+WARPING_QUALITY_THRESHOLDS = {
+    "MIN_CONFIDENCE": 0.7,
+    "MIN_WARP_QUALITY": 0.6,
+    "MAX_DISTORTION": 0.3,
+    "MIN_EDGE_PRESERVATION": 0.5
 }
 
-# 성공 메시지 상수
-SUCCESS_MESSAGES = {
-    'model_loaded': '모델 로딩 완료',
-    'processing_complete': '이미지 처리 완료',
-    'warping_successful': '의류 변형 성공'
+# 의류 타입별 워핑 설정
+CLOTHING_TYPE_WARPING = {
+    "shirt": {
+        "warp_strength": 0.8,
+        "preserve_patterns": True,
+        "maintain_fit": True
+    },
+    "pants": {
+        "warp_strength": 0.7,
+        "preserve_patterns": True,
+        "maintain_fit": True
+    },
+    "dress": {
+        "warp_strength": 0.9,
+        "preserve_patterns": True,
+        "maintain_fit": True
+    },
+    "jacket": {
+        "warp_strength": 0.6,
+        "preserve_patterns": True,
+        "maintain_fit": True
+    }
 }
 
-# 로깅 상수
-LOG_LEVELS = {
-    'debug': 10,
-    'info': 20,
-    'warning': 30,
-    'error': 40,
-    'critical': 50
+# 워핑 알고리즘 설정
+WARPING_ALGORITHMS = {
+    "thin_plate_spline": {
+        "control_points": 20,
+        "regularization": 0.1
+    },
+    "affine": {
+        "preserve_aspect": True,
+        "maintain_scale": True
+    },
+    "perspective": {
+        "corner_points": 4,
+        "interpolation": "bilinear"
+    }
 }
 
-# 성능 상수
-MEMORY_LIMIT_MB = 8192  # 8GB
-PROCESSING_TIMEOUT_SECONDS = 300  # 5분
-CACHE_SIZE_LIMIT = 1000  # 캐시된 이미지 수 제한
+# 출력 품질 설정
+OUTPUT_QUALITY = {
+    "resolution": 1024,
+    "format": "png",
+    "compression": 95,
+    "metadata": True
+}
+
+# 성능 최적화 설정
+PERFORMANCE_OPTIONS = {
+    "use_amp": True,
+    "memory_efficient": True,
+    "gradient_checkpointing": False,
+    "batch_processing": True
+}

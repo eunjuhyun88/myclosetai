@@ -96,6 +96,147 @@ class PostProcessingUtils:
             logging.error(f"이미지 정보 추출 실패: {e}")
             return {'type': 'unknown', 'valid': False, 'size': None, 'mode': None, 'channels': None}
 
+class QualityAssessor:
+    """품질 평가 유틸리티"""
+    
+    def __init__(self):
+        self.logger = logging.getLogger(f"{__name__}.QualityAssessor")
+        
+    def assess_image_quality(self, image, reference_image=None) -> Dict[str, Any]:
+        """이미지 품질 평가"""
+        try:
+            if not PostProcessingUtils.validate_image(image):
+                return {'success': False, 'error': '유효하지 않은 이미지'}
+            
+            quality_metrics = {}
+            
+            # 기본 품질 메트릭
+            if PIL_AVAILABLE and isinstance(image, Image.Image):
+                quality_metrics.update(self._assess_pil_image_quality(image))
+            elif isinstance(image, np.ndarray):
+                quality_metrics.update(self._assess_numpy_image_quality(image))
+            
+            # 참조 이미지가 있는 경우 상대적 품질 평가
+            if reference_image is not None:
+                relative_metrics = self._assess_relative_quality(image, reference_image)
+                quality_metrics.update(relative_metrics)
+            
+            # 전체 품질 점수 계산
+            overall_score = self._calculate_overall_quality_score(quality_metrics)
+            
+            return {
+                'success': True,
+                'metrics': quality_metrics,
+                'overall_score': overall_score,
+                'quality_grade': self._get_quality_grade(overall_score)
+            }
+            
+        except Exception as e:
+            self.logger.error(f"이미지 품질 평가 실패: {e}")
+            return {'success': False, 'error': str(e)}
+    
+    def _assess_pil_image_quality(self, image: Image.Image) -> Dict[str, float]:
+        """PIL 이미지 품질 평가"""
+        metrics = {}
+        
+        try:
+            # 해상도 품질
+            width, height = image.size
+            metrics['resolution_score'] = min(100.0, (width * height) / 10000.0)
+            
+            # 색상 품질
+            if image.mode in ['RGB', 'RGBA']:
+                metrics['color_score'] = 100.0
+            else:
+                metrics['color_score'] = 50.0
+            
+            # 선명도 (간단한 추정)
+            metrics['sharpness_score'] = 80.0  # 실제로는 더 정교한 알고리즘 필요
+            
+        except Exception as e:
+            self.logger.warning(f"PIL 이미지 품질 평가 실패: {e}")
+        
+        return metrics
+    
+    def _assess_numpy_image_quality(self, image: np.ndarray) -> Dict[str, float]:
+        """NumPy 이미지 품질 평가"""
+        metrics = {}
+        
+        try:
+            # 해상도 품질
+            height, width = image.shape[:2]
+            metrics['resolution_score'] = min(100.0, (width * height) / 10000.0)
+            
+            # 채널 품질
+            if len(image.shape) == 3:
+                metrics['channel_score'] = 100.0
+            else:
+                metrics['channel_score'] = 50.0
+            
+            # 데이터 타입 품질
+            if image.dtype == np.uint8:
+                metrics['data_type_score'] = 100.0
+            else:
+                metrics['data_type_score'] = 80.0
+            
+        except Exception as e:
+            self.logger.warning(f"NumPy 이미지 품질 평가 실패: {e}")
+        
+        return metrics
+    
+    def _assess_relative_quality(self, image, reference_image) -> Dict[str, float]:
+        """참조 이미지 대비 상대적 품질 평가"""
+        metrics = {}
+        
+        try:
+            if SKIMAGE_AVAILABLE:
+                # SSIM (구조적 유사성)
+                if isinstance(image, np.ndarray) and isinstance(reference_image, np.ndarray):
+                    ssim_score = ssim(image, reference_image, multichannel=True)
+                    metrics['ssim_score'] = float(ssim_score * 100)
+                
+                # PSNR (피크 신호 대 잡음비)
+                if isinstance(image, np.ndarray) and isinstance(reference_image, np.ndarray):
+                    psnr_score = psnr(image, reference_image)
+                    metrics['psnr_score'] = min(100.0, float(psnr_score / 2))
+                    
+        except Exception as e:
+            self.logger.warning(f"상대적 품질 평가 실패: {e}")
+        
+        return metrics
+    
+    def _calculate_overall_quality_score(self, metrics: Dict[str, float]) -> float:
+        """전체 품질 점수 계산"""
+        if not metrics:
+            return 0.0
+        
+        total_score = 0.0
+        valid_metrics = 0
+        
+        for score in metrics.values():
+            if isinstance(score, (int, float)) and score >= 0:
+                total_score += score
+                valid_metrics += 1
+        
+        return total_score / valid_metrics if valid_metrics > 0 else 0.0
+    
+    def _get_quality_grade(self, score: float) -> str:
+        """품질 등급 결정"""
+        if score >= 90:
+            return 'A+'
+        elif score >= 80:
+            return 'A'
+        elif score >= 70:
+            return 'B+'
+        elif score >= 60:
+            return 'B'
+        elif score >= 50:
+            return 'C+'
+        elif score >= 40:
+            return 'C'
+        else:
+            return 'D'
+
 class ImageEnhancer:
     """이미지 향상 유틸리티"""
     
@@ -423,6 +564,78 @@ class AdvancedImageProcessor:
             self.logger.error(f"틴트 조정 실패: {e}")
             return image
 
+class VisualizationHelper:
+    """시각화 도우미 클래스"""
+    
+    def __init__(self):
+        self.logger = logging.getLogger(f"{__name__}.VisualizationHelper")
+    
+    def create_comparison_grid(self, images: List[Image.Image], titles: List[str] = None) -> Image.Image:
+        """이미지 비교를 위한 그리드 생성"""
+        try:
+            if not PIL_AVAILABLE:
+                return None
+            
+            if not images:
+                return None
+            
+            n_images = len(images)
+            if titles is None:
+                titles = [f"Image {i+1}" for i in range(n_images)]
+            
+            # 그리드 크기 계산
+            cols = min(3, n_images)
+            rows = (n_images + cols - 1) // cols
+            
+            # 첫 번째 이미지 크기로 통일
+            base_size = images[0].size
+            grid_width = base_size[0] * cols
+            grid_height = base_size[1] * rows
+            
+            # 그리드 이미지 생성
+            grid_image = Image.new('RGB', (grid_width, grid_height), 'white')
+            
+            for i, (image, title) in enumerate(zip(images, titles)):
+                row = i // cols
+                col = i % cols
+                x = col * base_size[0]
+                y = row * base_size[1]
+                
+                # 이미지 크기 조정
+                resized_image = image.resize(base_size, Image.Resampling.LANCZOS)
+                grid_image.paste(resized_image, (x, y))
+            
+            return grid_image
+            
+        except Exception as e:
+            self.logger.error(f"비교 그리드 생성 실패: {e}")
+            return None
+    
+    def add_text_overlay(self, image: Image.Image, text: str, position: Tuple[int, int] = (10, 10)) -> Image.Image:
+        """이미지에 텍스트 오버레이 추가"""
+        try:
+            if not PIL_AVAILABLE or not isinstance(image, Image.Image):
+                return image
+            
+            # 이미지 복사
+            result = image.copy()
+            draw = ImageDraw.Draw(result)
+            
+            # 기본 폰트 사용 (시스템 폰트가 없는 경우 대비)
+            try:
+                font = ImageFont.truetype("arial.ttf", 20)
+            except:
+                font = ImageFont.load_default()
+            
+            # 텍스트 그리기
+            draw.text(position, text, fill='white', font=font)
+            
+            return result
+            
+        except Exception as e:
+            self.logger.error(f"텍스트 오버레이 추가 실패: {e}")
+            return image
+
 # 전역 변수 설정
 NUMPY_AVAILABLE = True  # numpy는 기본적으로 사용 가능하다고 가정
 
@@ -431,5 +644,6 @@ __all__ = [
     'PostProcessingUtils',
     'ImageEnhancer', 
     'QualityAssessment',
-    'AdvancedImageProcessor'
+    'AdvancedImageProcessor',
+    'VisualizationHelper'
 ]

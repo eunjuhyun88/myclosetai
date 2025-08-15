@@ -45,14 +45,14 @@ except ImportError as e:
 
 # AI Steps import (선택적)
 try:
-    from app.ai_pipeline.steps.step_01_human_parsing import HumanParsingStep
-    from app.ai_pipeline.steps.step_02_pose_estimation import PoseEstimationStep
-    from app.ai_pipeline.steps.step_03_cloth_segmentation import ClothSegmentationStep
-    from app.ai_pipeline.steps.step_04_geometric_matching import GeometricMatchingStep
-    from app.ai_pipeline.steps.step_05_cloth_warping import ClothWarpingStep
-    from app.ai_pipeline.steps.step_06_virtual_fitting import VirtualFittingStep
-    from app.ai_pipeline.steps.step_07_post_processing import PostProcessingStep
-    from app.ai_pipeline.steps.step_08_quality_assessment import QualityAssessmentStep
+    from app.ai_pipeline.steps.step_01_human_parsing_models.step_01_human_parsing import HumanParsingStep
+    from app.ai_pipeline.steps.step_02_pose_estimation_models.step_02_pose_estimation import PoseEstimationStep
+    from app.ai_pipeline.steps.step_03_cloth_segmentation_models.step_03_cloth_segmentation import ClothSegmentationStep
+    from app.ai_pipeline.steps.step_04_geometric_matching_models.step_04_geometric_matching import GeometricMatchingStep
+    from app.ai_pipeline.steps.step_05_cloth_warping_models.step_05_cloth_warping import ClothWarpingStep
+    from app.ai_pipeline.steps.step_06_virtual_fitting_models.step_06_virtual_fitting import VirtualFittingStep
+    from app.ai_pipeline.steps.post_processing.step_07_post_processing import PostProcessingStep
+    from app.ai_pipeline.steps.step_08_quality_assessment_models.step_08_quality_assessment import QualityAssessmentStep
     AI_STEPS_AVAILABLE = True
 except ImportError as e:
     logging.warning(f"AI Steps import 실패: {e}")

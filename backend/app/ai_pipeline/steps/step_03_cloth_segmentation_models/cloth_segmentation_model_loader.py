@@ -1,622 +1,596 @@
+#!/usr/bin/env python3
 """
-🔥 Cloth Segmentation 모델 로딩 관련 메서드들 - 기존 완전한 BaseStepMixin 활용
-================================================================
+🔥 MyCloset AI - Step 03: 의류 세그멘테이션 - Model Loader
+==========================================================
 
-기존 완전한 BaseStepMixin v20.0 (5120줄)을 활용한 Cloth Segmentation 모델 로딩 관련 메서드들
-체크포인트와 아키텍처 연결 강화
+의류 세그멘테이션을 위한 통합 모델 로더
+- models/ 폴더의 완전한 신경망 구조 로딩 (체크포인트 없어도 동작)
+- checkpoints/ 폴더의 사전 훈련된 가중치 로딩 (성능 향상)
+- 두 가지를 조합하여 최적의 모델 제공
 
 Author: MyCloset AI Team
-Date: 2025-08-07
-Version: 2.0 (BaseStepMixin 활용)
+Date: 2025-08-14
+Version: 1.0
 """
-import logging
+
 import os
-from typing import Dict, Any, Optional, List
-import torch
-import torch.nn as nn
+import sys
+import logging
+import warnings
 from pathlib import Path
+from typing import Dict, Any, Optional, Union, Tuple, List
+from abc import ABC, abstractmethod
 
-# 🔥 메인 BaseStepMixin import
+# PyTorch import 시도
 try:
-    from app.ai_pipeline.steps.base.base_step_mixin import BaseStepMixin
-    BASE_STEP_MIXIN_AVAILABLE = True
-    logging.info("✅ 메인 BaseStepMixin import 성공")
+    import torch
+    import torch.nn as nn
+    TORCH_AVAILABLE = True
 except ImportError:
-    try:
-        from ...base.base_step_mixin import BaseStepMixin
-        BASE_STEP_MIXIN_AVAILABLE = True
-        logging.info("✅ 상대 경로로 BaseStepMixin import 성공")
-    except ImportError:
-        BASE_STEP_MIXIN_AVAILABLE = False
-        logging.error("❌ BaseStepMixin import 실패 - 메인 파일 사용 필요")
-        raise ImportError("BaseStepMixin을 import할 수 없습니다. 메인 BaseStepMixin을 사용하세요.")
+    TORCH_AVAILABLE = False
+    torch = None
+    # torch가 없을 때는 기본 타입 사용
+    class MockNNModule:
+        """Mock nn.Module (torch 없음)"""
+        pass
+    # nn.Module을 MockNNModule으로 대체
+    class nn:
+        Module = MockNNModule
 
-# Central Hub import를 선택적으로 처리
+# 체크포인트 관련 모듈들
 try:
-    from ...utils.common_imports import (
-        _get_central_hub_container
-    )
+    from .checkpoints.cloth_segmentation_checkpoint_loader import ClothSegmentationCheckpointLoader
+    from .checkpoints.cloth_segmentation_weight_mapper import ClothSegmentationWeightMapper
+    from .checkpoints.cloth_segmentation_checkpoint_utils import ClothSegmentationCheckpointValidator
+    CHECKPOINT_AVAILABLE = True
 except ImportError:
-    # 폴백: 절대 경로로 import 시도
-    try:
-        from app.ai_pipeline.utils.common_imports import (
-            _get_central_hub_container
-        )
-    except ImportError:
-        # 테스트 환경에서는 mock 함수 사용
-        def _get_central_hub_container():
-            return None
+    CHECKPOINT_AVAILABLE = False
+    ClothSegmentationCheckpointLoader = None
+    ClothSegmentationWeightMapper = None
+    ClothSegmentationCheckpointValidator = None
 
-# 로컬 모듈들 import
-try:
-    from .checkpoint_analyzer import CheckpointAnalyzer
-    from .enhanced_models import (
-        EnhancedU2NetModel,
-        EnhancedSAMModel,
-        EnhancedDeepLabV3PlusModel
-    )
-except ImportError:
-    # 절대 import 시도
-    try:
-        from app.ai_pipeline.steps.cloth_segmentation.checkpoint_analyzer import CheckpointAnalyzer
-        from app.ai_pipeline.steps.cloth_segmentation.enhanced_models import (
-            EnhancedU2NetModel,
-            EnhancedSAMModel,
-            EnhancedDeepLabV3PlusModel
-        )
-    except ImportError:
-        # 최종 폴백: mock 클래스들
-        class CheckpointAnalyzer:
-            def __init__(self):
-                pass
-            
-            def map_checkpoint_keys(self, checkpoint):
-                return checkpoint
-        
-        class EnhancedU2NetModel:
-            def __init__(self, num_classes=1, input_channels=3):
-                pass
-        
-        class EnhancedSAMModel:
-            def __init__(self):
-                pass
-        
-        class EnhancedDeepLabV3PlusModel:
-            def __init__(self, num_classes=1, input_channels=3):
-                pass
-
-logger = logging.getLogger(__name__)
-
-class ClothSegmentationModelLoader(BaseStepMixin):
-    """
-    🔥 Cloth Segmentation 모델 로딩 관련 메서드들을 담당하는 클래스 - 기존 완전한 BaseStepMixin 활용
-    체크포인트 연결 강화
-    """
+class BaseModelLoader(ABC):
+    """모델 로더 기본 클래스"""
     
-    def __init__(self, step_instance=None):
-        """초기화 - 기존 완전한 BaseStepMixin 활용"""
-        super().__init__()
-        self.step = step_instance
-        self.logger = logging.getLogger(f"{__name__}.ClothSegmentationModelLoader")
+    def __init__(self, models_dir: str = None, checkpoints_dir: str = None):
+        self.models_dir = Path(models_dir) if models_dir else None
+        self.checkpoints_dir = Path(checkpoints_dir) if checkpoints_dir else None
+        self.logger = logging.getLogger(self.__class__.__name__)
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu') if TORCH_AVAILABLE else 'cpu'
         
-        # 체크포인트 분석기 초기화
-        self.checkpoint_analyzer = CheckpointAnalyzer()
+    @abstractmethod
+    def load_model(self, model_name: str, use_checkpoint: bool = True) -> Optional[nn.Module]:
+        """모델 로딩 (구현 필요)"""
+        pass
         
-        # 실제 모델 파일 경로 매핑 (더 유연한 경로 지원)
-        self.model_paths = {
-            'u2net_cloth': [
-                'backend/ai_models/step_03_cloth_segmentation/u2net.pth',
-                'backend/ai_models/step_03/u2net.pth',
-                'ai_models/step_03/u2net.pth',
-                'ai_models/step_03_cloth_segmentation/u2net.pth',
-                'models/u2net.pth',
-                'u2net.pth'
-            ],
-            'sam_huge': [
-                'backend/ai_models/step_03_cloth_segmentation/sam.pth',
-                'backend/ai_models/step_03/sam.pth',
-                'ai_models/step_03/sam.pth',
-                'ai_models/step_03_cloth_segmentation/sam.pth',
-                'models/sam.pth',
-                'sam.pth'
-            ],
-            'deeplabv3_plus': [
-                'backend/ai_models/step_03_cloth_segmentation/deeplabv3.pth',
-                'backend/ai_models/step_03/deeplabv3.pth',
-                'ai_models/step_03/deeplabv3.pth',
-                'ai_models/step_03_cloth_segmentation/deeplabv3.pth',
-                'models/deeplabv3.pth',
-                'deeplabv3.pth'
-            ]
+    @abstractmethod
+    def get_available_models(self) -> List[str]:
+        """사용 가능한 모델 목록 반환 (구현 필요)"""
+        pass
+        
+    def validate_model(self, model: nn.Module) -> bool:
+        """모델 유효성 검증"""
+        try:
+            if not TORCH_AVAILABLE:
+                return False
+                
+            # 기본 모델 구조 확인
+            if not isinstance(model, nn.Module):
+                return False
+                
+            # 더미 입력으로 forward pass 테스트
+            try:
+                with torch.no_grad():
+                    if hasattr(model, 'input_channels'):
+                        input_channels = model.input_channels
+                    else:
+                        input_channels = 3  # 기본값
+                        
+                    dummy_input = torch.randn(1, input_channels, 64, 64).to(self.device)
+                    output = model(dummy_input)
+                    
+                    if output is not None:
+                        self.logger.info(f"✅ 모델 유효성 검증 성공: {model.__class__.__name__}")
+                        return True
+                    else:
+                        self.logger.warning(f"⚠️ 모델 출력이 None입니다: {model.__class__.__name__}")
+                        return False
+                        
+            except Exception as e:
+                self.logger.warning(f"⚠️ 모델 forward pass 실패: {e}")
+                return False
+                
+        except Exception as e:
+            self.logger.error(f"모델 유효성 검증 실패: {e}")
+            return False
+            
+        return False
+
+class ClothSegmentationU2NetLoader(BaseModelLoader):
+    """U2Net 모델 로더"""
+    
+    def __init__(self, models_dir: str = None, checkpoints_dir: str = None):
+        super().__init__(models_dir, checkpoints_dir)
+        
+    def load_model(self, model_name: str = "u2net", use_checkpoint: bool = True) -> Optional[nn.Module]:
+        """U2Net 모델 로딩"""
+        try:
+            if not TORCH_AVAILABLE:
+                self.logger.error("PyTorch를 사용할 수 없습니다")
+                return None
+                
+            # 1. 기본 모델 구조 로딩 (체크포인트 없어도 동작)
+            model = self._load_u2net_structure()
+            if model is None:
+                self.logger.error("U2Net 모델 구조 로딩 실패")
+                return None
+                
+            # 2. 체크포인트가 있으면 가중치 로딩 (성능 향상)
+            if use_checkpoint and CHECKPOINT_AVAILABLE and self.checkpoints_dir:
+                checkpoint_loader = ClothSegmentationCheckpointLoader(str(self.checkpoints_dir))
+                available_checkpoints = checkpoint_loader.get_available_checkpoints()
+                
+                if 'u2net' in available_checkpoints and available_checkpoints['u2net']:
+                    checkpoint_path = available_checkpoints['u2net'][0]  # 첫 번째 체크포인트 사용
+                    if checkpoint_loader.load_u2net_checkpoint(model, checkpoint_path):
+                        self.logger.info(f"✅ U2Net 체크포인트 로딩 성공: {checkpoint_path}")
+                    else:
+                        self.logger.warning(f"⚠️ U2Net 체크포인트 로딩 실패, 기본 모델 사용")
+                else:
+                    self.logger.info("ℹ️ U2Net 체크포인트가 없습니다. 기본 모델 사용")
+            else:
+                self.logger.info("ℹ️ 체크포인트 사용하지 않음. 기본 모델 사용")
+                
+            # 3. 모델 유효성 검증
+            if self.validate_model(model):
+                self.logger.info(f"✅ U2Net 모델 로딩 완료: {model_name}")
+                return model
+            else:
+                self.logger.error("U2Net 모델 유효성 검증 실패")
+                return None
+                
+        except Exception as e:
+            self.logger.error(f"U2Net 모델 로딩 실패: {e}")
+            return None
+            
+    def _load_u2net_structure(self) -> Optional[nn.Module]:
+        """U2Net 모델 구조 로딩"""
+        try:
+            # models/ 폴더에서 U2Net 모델 구조 로딩
+            if self.models_dir and (self.models_dir / "u2net.py").exists():
+                # 동적 import 시도
+                sys.path.insert(0, str(self.models_dir))
+                try:
+                    from u2net import U2Net
+                    model = U2Net()
+                    model.to(self.device)
+                    return model
+                except ImportError as e:
+                    self.logger.warning(f"U2Net 모델 구조 import 실패: {e}")
+                    
+            # 폴백: 기본 U2Net 구조 생성
+            return self._create_basic_u2net()
+            
+        except Exception as e:
+            self.logger.error(f"U2Net 모델 구조 로딩 실패: {e}")
+            return None
+            
+    def _create_basic_u2net(self) -> nn.Module:
+        """기본 U2Net 구조 생성 (체크포인트 없어도 동작)"""
+        try:
+            # 간단한 U2Net 구조 생성
+            class BasicU2Net(nn.Module):
+                def __init__(self, in_ch=3, out_ch=1):
+                    super().__init__()
+                    self.input_channels = in_ch
+                    
+                    # 인코더
+                    self.en_1 = nn.Sequential(
+                        nn.Conv2d(in_ch, 64, 3, padding=1),
+                        nn.BatchNorm2d(64),
+                        nn.ReLU(inplace=True)
+                    )
+                    self.en_2 = nn.Sequential(
+                        nn.Conv2d(64, 128, 3, padding=1),
+                        nn.BatchNorm2d(128),
+                        nn.ReLU(inplace=True)
+                    )
+                    
+                    # 디코더
+                    self.de_1 = nn.Sequential(
+                        nn.Conv2d(128, 64, 3, padding=1),
+                        nn.BatchNorm2d(64),
+                        nn.ReLU(inplace=True)
+                    )
+                    
+                    # 최종 출력
+                    self.final = nn.Conv2d(64, out_ch, 1)
+                    
+                def forward(self, x):
+                    # 인코더
+                    en1 = self.en_1(x)
+                    en2 = self.en_2(en1)
+                    
+                    # 디코더
+                    de1 = self.de_1(en2)
+                    
+                    # 최종 출력
+                    output = self.final(de1)
+                    return torch.sigmoid(output)
+                    
+            model = BasicU2Net()
+            model.to(self.device)
+            self.logger.info("✅ 기본 U2Net 구조 생성 완료 (체크포인트 없어도 동작)")
+            return model
+            
+        except Exception as e:
+            self.logger.error(f"기본 U2Net 구조 생성 실패: {e}")
+            return None
+            
+    def get_available_models(self) -> List[str]:
+        """사용 가능한 U2Net 모델 목록"""
+        models = []
+        
+        if self.models_dir and (self.models_dir / "u2net.py").exists():
+            models.append("u2net")
+            
+        # 기본 모델은 항상 사용 가능
+        models.append("u2net_basic")
+        
+        return models
+
+class ClothSegmentationDeepLabV3PlusLoader(BaseModelLoader):
+    """DeepLabV3+ 모델 로더"""
+    
+    def __init__(self, models_dir: str = None, checkpoints_dir: str = None):
+        super().__init__(models_dir, checkpoints_dir)
+        
+    def load_model(self, model_name: str = "deeplabv3plus", use_checkpoint: bool = True) -> Optional[nn.Module]:
+        """DeepLabV3+ 모델 로딩"""
+        try:
+            if not TORCH_AVAILABLE:
+                self.logger.error("PyTorch를 사용할 수 없습니다")
+                return None
+                
+            # 1. 기본 모델 구조 로딩 (체크포인트 없어도 동작)
+            model = self._load_deeplabv3plus_structure()
+            if model is None:
+                self.logger.error("DeepLabV3+ 모델 구조 로딩 실패")
+                return None
+                
+            # 2. 체크포인트가 있으면 가중치 로딩 (성능 향상)
+            if use_checkpoint and CHECKPOINT_AVAILABLE and self.checkpoints_dir:
+                checkpoint_loader = ClothSegmentationCheckpointLoader(str(self.checkpoints_dir))
+                available_checkpoints = checkpoint_loader.get_available_checkpoints()
+                
+                if 'deeplabv3plus' in available_checkpoints and available_checkpoints['deeplabv3plus']:
+                    checkpoint_path = available_checkpoints['deeplabv3plus'][0]
+                    if checkpoint_loader.load_deeplabv3plus_checkpoint(model, checkpoint_path):
+                        self.logger.info(f"✅ DeepLabV3+ 체크포인트 로딩 성공: {checkpoint_path}")
+                    else:
+                        self.logger.warning(f"⚠️ DeepLabV3+ 체크포인트 로딩 실패, 기본 모델 사용")
+                else:
+                    self.logger.info("ℹ️ DeepLabV3+ 체크포인트가 없습니다. 기본 모델 사용")
+            else:
+                self.logger.info("ℹ️ 체크포인트 사용하지 않음. 기본 모델 사용")
+                
+            # 3. 모델 유효성 검증
+            if self.validate_model(model):
+                self.logger.info(f"✅ DeepLabV3+ 모델 로딩 완료: {model_name}")
+                return model
+            else:
+                self.logger.error("DeepLabV3+ 모델 유효성 검증 실패")
+                return None
+                
+        except Exception as e:
+            self.logger.error(f"DeepLabV3+ 모델 로딩 실패: {e}")
+            return None
+            
+    def _load_deeplabv3plus_structure(self) -> Optional[nn.Module]:
+        """DeepLabV3+ 모델 구조 로딩"""
+        try:
+            # models/ 폴더에서 DeepLabV3+ 모델 구조 로딩
+            if self.models_dir and (self.models_dir / "deeplabv3plus.py").exists():
+                # 동적 import 시도
+                sys.path.insert(0, str(self.models_dir))
+                try:
+                    from deeplabv3plus import DeepLabV3Plus
+                    model = DeepLabV3Plus()
+                    model.to(self.device)
+                    return model
+                except ImportError as e:
+                    self.logger.warning(f"DeepLabV3+ 모델 구조 import 실패: {e}")
+                    
+            # 폴백: 기본 DeepLabV3+ 구조 생성
+            return self._create_basic_deeplabv3plus()
+            
+        except Exception as e:
+            self.logger.error(f"DeepLabV3+ 모델 구조 로딩 실패: {e}")
+            return None
+            
+    def _create_basic_deeplabv3plus(self) -> nn.Module:
+        """기본 DeepLabV3+ 구조 생성 (체크포인트 없어도 동작)"""
+        try:
+            # 간단한 DeepLabV3+ 구조 생성
+            class BasicDeepLabV3Plus(nn.Module):
+                def __init__(self, in_ch=3, out_ch=1):
+                    super().__init__()
+                    self.input_channels = in_ch
+                    
+                    # 백본 (간단한 ResNet 블록)
+                    self.backbone = nn.Sequential(
+                        nn.Conv2d(in_ch, 64, 7, stride=2, padding=3),
+                        nn.BatchNorm2d(64),
+                        nn.ReLU(inplace=True),
+                        nn.MaxPool2d(3, stride=2, padding=1)
+                    )
+                    
+                    # ASPP 모듈
+                    self.aspp = nn.Sequential(
+                        nn.Conv2d(64, 128, 3, padding=1),
+                        nn.BatchNorm2d(128),
+                        nn.ReLU(inplace=True)
+                    )
+                    
+                    # 디코더
+                    self.decoder = nn.Sequential(
+                        nn.Conv2d(128, 64, 3, padding=1),
+                        nn.BatchNorm2d(64),
+                        nn.ReLU(inplace=True),
+                        nn.Conv2d(64, out_ch, 1)
+                    )
+                    
+                def forward(self, x):
+                    # 백본
+                    backbone_out = self.backbone(x)
+                    
+                    # ASPP
+                    aspp_out = self.aspp(backbone_out)
+                    
+                    # 디코더
+                    decoder_out = self.decoder(aspp_out)
+                    
+                    # 업샘플링
+                    output = F.interpolate(decoder_out, size=x.shape[2:], mode='bilinear', align_corners=False)
+                    return torch.sigmoid(output)
+                    
+            model = BasicDeepLabV3Plus()
+            model.to(self.device)
+            self.logger.info("✅ 기본 DeepLabV3+ 구조 생성 완료 (체크포인트 없어도 동작)")
+            return model
+            
+        except Exception as e:
+            self.logger.error(f"기본 DeepLabV3+ 구조 생성 실패: {e}")
+            return None
+            
+    def get_available_models(self) -> List[str]:
+        """사용 가능한 DeepLabV3+ 모델 목록"""
+        models = []
+        
+        if self.models_dir and (self.models_dir / "deeplabv3plus.py").exists():
+            models.append("deeplabv3plus")
+            
+        # 기본 모델은 항상 사용 가능
+        models.append("deeplabv3plus_basic")
+        
+        return models
+
+class ClothSegmentationSAMLoader(BaseModelLoader):
+    """SAM 모델 로더"""
+    
+    def __init__(self, models_dir: str = None, checkpoints_dir: str = None):
+        super().__init__(models_dir, checkpoints_dir)
+        
+    def load_model(self, model_name: str = "sam", use_checkpoint: bool = True) -> Optional[nn.Module]:
+        """SAM 모델 로딩"""
+        try:
+            if not TORCH_AVAILABLE:
+                self.logger.error("PyTorch를 사용할 수 없습니다")
+                return None
+                
+            # 1. 기본 모델 구조 로딩 (체크포인트 없어도 동작)
+            model = self._load_sam_structure()
+            if model is None:
+                self.logger.error("SAM 모델 구조 로딩 실패")
+                return None
+                
+            # 2. 체크포인트가 있으면 가중치 로딩 (성능 향상)
+            if use_checkpoint and CHECKPOINT_AVAILABLE and self.checkpoints_dir:
+                checkpoint_loader = ClothSegmentationCheckpointLoader(str(self.checkpoints_dir))
+                available_checkpoints = checkpoint_loader.get_available_checkpoints()
+                
+                if 'sam' in available_checkpoints and available_checkpoints['sam']:
+                    checkpoint_path = available_checkpoints['sam'][0]
+                    if checkpoint_loader.load_sam_checkpoint(model, checkpoint_path):
+                        self.logger.info(f"✅ SAM 체크포인트 로딩 성공: {checkpoint_path}")
+                    else:
+                        self.logger.warning(f"⚠️ SAM 체크포인트 로딩 실패, 기본 모델 사용")
+                else:
+                    self.logger.info("ℹ️ SAM 체크포인트가 없습니다. 기본 모델 사용")
+            else:
+                self.logger.info("ℹ️ 체크포인트 사용하지 않음. 기본 모델 사용")
+                
+            # 3. 모델 유효성 검증
+            if self.validate_model(model):
+                self.logger.info(f"✅ SAM 모델 로딩 완료: {model_name}")
+                return model
+            else:
+                self.logger.error("SAM 모델 유효성 검증 실패")
+                return None
+                
+        except Exception as e:
+            self.logger.error(f"SAM 모델 로딩 실패: {e}")
+            return None
+            
+    def _load_sam_structure(self) -> Optional[nn.Module]:
+        """SAM 모델 구조 로딩"""
+        try:
+            # models/ 폴더에서 SAM 모델 구조 로딩
+            if self.models_dir and (self.models_dir / "sam.py").exists():
+                # 동적 import 시도
+                sys.path.insert(0, str(self.models_dir))
+                try:
+                    from sam import SAM
+                    model = SAM()
+                    model.to(self.device)
+                    return model
+                except ImportError as e:
+                    self.logger.warning(f"SAM 모델 구조 import 실패: {e}")
+                    
+            # 폴백: 기본 SAM 구조 생성
+            return self._create_basic_sam()
+            
+        except Exception as e:
+            self.logger.error(f"SAM 모델 구조 로딩 실패: {e}")
+            return None
+            
+    def _create_basic_sam(self) -> nn.Module:
+        """기본 SAM 구조 생성 (체크포인트 없어도 동작)"""
+        try:
+            # 간단한 SAM 구조 생성
+            class BasicSAM(nn.Module):
+                def __init__(self, in_ch=3, out_ch=1):
+                    super().__init__()
+                    self.input_channels = in_ch
+                    
+                    # 이미지 인코더
+                    self.image_encoder = nn.Sequential(
+                        nn.Conv2d(in_ch, 64, 3, padding=1),
+                        nn.BatchNorm2d(64),
+                        nn.ReLU(inplace=True)
+                    )
+                    
+                    # 프롬프트 인코더
+                    self.prompt_encoder = nn.Sequential(
+                        nn.Linear(2, 64),  # 2D 좌표
+                        nn.ReLU(inplace=True)
+                    )
+                    
+                    # 마스크 디코더
+                    self.mask_decoder = nn.Sequential(
+                        nn.Conv2d(64, 32, 3, padding=1),
+                        nn.BatchNorm2d(32),
+                        nn.ReLU(inplace=True),
+                        nn.Conv2d(32, out_ch, 1)
+                    )
+                    
+                def forward(self, x, points=None):
+                    # 이미지 인코딩
+                    image_features = self.image_encoder(x)
+                    
+                    # 프롬프트 인코딩 (기본값)
+                    if points is None:
+                        points = torch.zeros(1, 1, 2).to(x.device)
+                    prompt_features = self.prompt_encoder(points)
+                    
+                    # 마스크 디코딩
+                    mask = self.mask_decoder(image_features)
+                    return torch.sigmoid(mask)
+                    
+            model = BasicSAM()
+            model.to(self.device)
+            self.logger.info("✅ 기본 SAM 구조 생성 완료 (체크포인트 없어도 동작)")
+            return model
+            
+        except Exception as e:
+            self.logger.error(f"기본 SAM 구조 생성 실패: {e}")
+            return None
+            
+    def get_available_models(self) -> List[str]:
+        """사용 가능한 SAM 모델 목록"""
+        models = []
+        
+        if self.models_dir and (self.models_dir / "sam.py").exists():
+            models.append("sam")
+            
+        # 기본 모델은 항상 사용 가능
+        models.append("sam_basic")
+        
+        return models
+
+class ClothSegmentationModelLoader:
+    """의류 세그멘테이션 통합 모델 로더"""
+    
+    def __init__(self, models_dir: str = None, checkpoints_dir: str = None):
+        self.models_dir = Path(models_dir) if models_dir else None
+        self.checkpoints_dir = Path(checkpoints_dir) if checkpoints_dir else None
+        self.logger = logging.getLogger(self.__class__.__name__)
+        
+        # 개별 모델 로더들
+        self.u2net_loader = ClothSegmentationU2NetLoader(models_dir, checkpoints_dir)
+        self.deeplabv3plus_loader = ClothSegmentationDeepLabV3PlusLoader(models_dir, checkpoints_dir)
+        self.sam_loader = ClothSegmentationSAMLoader(models_dir, checkpoints_dir)
+        
+        # 로딩된 모델들 캐시
+        self.loaded_models = {}
+        
+    def load_u2net(self, use_checkpoint: bool = True) -> Optional[nn.Module]:
+        """U2Net 모델 로딩"""
+        if 'u2net' not in self.loaded_models:
+            self.loaded_models['u2net'] = self.u2net_loader.load_model("u2net", use_checkpoint)
+        return self.loaded_models['u2net']
+        
+    def load_deeplabv3plus(self, use_checkpoint: bool = True) -> Optional[nn.Module]:
+        """DeepLabV3+ 모델 로딩"""
+        if 'deeplabv3plus' not in self.loaded_models:
+            self.loaded_models['deeplabv3plus'] = self.deeplabv3plus_loader.load_model("deeplabv3plus", use_checkpoint)
+        return self.loaded_models['deeplabv3plus']
+        
+    def load_sam(self, use_checkpoint: bool = True) -> Optional[nn.Module]:
+        """SAM 모델 로딩"""
+        if 'sam' not in self.loaded_models:
+            self.loaded_models['sam'] = self.sam_loader.load_model("sam", use_checkpoint)
+        return self.loaded_models['sam']
+        
+    def load_all_models(self, use_checkpoint: bool = True) -> Dict[str, nn.Module]:
+        """모든 모델 로딩"""
+        models = {}
+        
+        models['u2net'] = self.load_u2net(use_checkpoint)
+        models['deeplabv3plus'] = self.load_deeplabv3plus(use_checkpoint)
+        models['sam'] = self.load_sam(use_checkpoint)
+        
+        # None이 아닌 모델만 반환
+        return {k: v for k, v in models.items() if v is not None}
+        
+    def get_available_models(self) -> Dict[str, List[str]]:
+        """사용 가능한 모든 모델 목록"""
+        return {
+            'u2net': self.u2net_loader.get_available_models(),
+            'deeplabv3plus': self.deeplabv3plus_loader.get_available_models(),
+            'sam': self.sam_loader.get_available_models()
         }
         
-        self.logger.info("✅ ClothSegmentationModelLoader 초기화 완료 (기존 완전한 BaseStepMixin 활용)")
-    
-    def load_ai_models_via_central_hub(self) -> bool:
-        """🔥 Central Hub를 통한 AI 모델 로딩 (체크포인트 연결 강화) - 기존 완전한 BaseStepMixin 활용"""
-        try:
-            self.logger.info("🔄 Central Hub를 통한 Cloth Segmentation AI 모델 로딩 시작 (기존 완전한 BaseStepMixin 활용)...")
-            
-            if not self.step:
-                self.logger.error("❌ step 인스턴스가 없음")
-                return False
-            
-            # 기존 완전한 BaseStepMixin의 Central Hub 연결 기능 활용
-            if hasattr(self, '_auto_connect_central_hub'):
-                self._auto_connect_central_hub()
-            
-            # Central Hub DI Container 가져오기
-            container = None
-            try:
-                container = _get_central_hub_container()
-            except NameError:
-                try:
-                    if hasattr(self.step, 'central_hub_container'):
-                        container = self.step.central_hub_container
-                    elif hasattr(self.step, 'di_container'):
-                        container = self.step.di_container
-                except Exception:
-                    pass
-            
-            # ModelLoader 서비스 가져오기
-            model_loader = None
-            if container:
-                try:
-                    model_loader = container.get('cloth_segmentation_model_loader')
-                    if model_loader:
-                        self.logger.info("✅ Central Hub에서 ModelLoader 서비스 발견")
-                    else:
-                        self.logger.warning("⚠️ Central Hub에서 ModelLoader 서비스를 찾을 수 없음")
-                except Exception as e:
-                    self.logger.warning(f"⚠️ Central Hub 서비스 접근 실패: {e}")
-            
-            if self.step:
-                self.step.model_interface = model_loader
-                self.step.model_loader = model_loader
-            
-            success_count = 0
-            total_models = 3
-            
-            # 1. U2Net 모델 로딩 (체크포인트 연결 강화)
-            try:
-                u2net_model = self.load_u2net_with_checkpoint(model_loader)
-                if u2net_model:
-                    self.step.ai_models['u2net_cloth'] = u2net_model
-                    self.step.models_loading_status['u2net_cloth'] = True
-                    self.step.loaded_models['u2net_cloth'] = u2net_model
-                    success_count += 1
-                    self.logger.info("✅ U2Net 모델 로딩 성공 (체크포인트 연결됨)")
-                else:
-                    self.step.models_loading_status['u2net_cloth'] = False
-                    self.logger.warning("⚠️ U2Net 모델 로딩 실패")
-            except Exception as e:
-                self.logger.error(f"❌ U2Net 모델 로딩 실패: {e}")
-                self.step.models_loading_status['u2net_cloth'] = False
-            
-            # 2. SAM 모델 로딩 (체크포인트 연결 강화)
-            try:
-                sam_model = self.load_sam_with_checkpoint(model_loader)
-                if sam_model:
-                    self.step.ai_models['sam_huge'] = sam_model
-                    self.step.models_loading_status['sam_huge'] = True
-                    self.step.loaded_models['sam_huge'] = sam_model
-                    success_count += 1
-                    self.logger.info("✅ SAM 모델 로딩 성공 (체크포인트 연결됨)")
-                else:
-                    self.step.models_loading_status['sam_huge'] = False
-                    self.logger.warning("⚠️ SAM 모델 로딩 실패")
-            except Exception as e:
-                self.logger.error(f"❌ SAM 모델 로딩 실패: {e}")
-                self.step.models_loading_status['sam_huge'] = False
-            
-            # 3. DeepLabV3+ 모델 로딩 (체크포인트 연결 강화)
-            try:
-                deeplabv3plus_model = self.load_deeplabv3plus_with_checkpoint(model_loader)
-                if deeplabv3plus_model:
-                    self.step.ai_models['deeplabv3_plus'] = deeplabv3plus_model
-                    self.step.models_loading_status['deeplabv3_plus'] = True
-                    self.step.loaded_models['deeplabv3_plus'] = deeplabv3plus_model
-                    success_count += 1
-                    self.logger.info("✅ DeepLabV3+ 모델 로딩 성공 (체크포인트 연결됨)")
-                else:
-                    self.step.models_loading_status['deeplabv3_plus'] = False
-                    self.logger.warning("⚠️ DeepLabV3+ 모델 로딩 실패")
-            except Exception as e:
-                self.logger.error(f"❌ DeepLabV3+ 모델 로딩 실패: {e}")
-                self.step.models_loading_status['deeplabv3_plus'] = False
-            
-            # 결과 요약
-            self.logger.info(f"🎯 Central Hub를 통한 Cloth Segmentation AI 모델 로딩 완료: {success_count}/{total_models}개 모델 성공")
-            
-            # 성공한 모델들 정보 출력
-            for model_name, status in self.step.models_loading_status.items():
-                if status:
-                    model = self.step.ai_models.get(model_name)
-                    if model:
-                        self.logger.info(f"✅ {model_name}: {type(model).__name__} (Central Hub)")
-                    else:
-                        self.logger.warning(f"⚠️ {model_name}: 상태는 True이지만 모델이 없음")
-                else:
-                    self.logger.warning(f"❌ {model_name}: Central Hub 로딩 실패")
-            
-            return success_count > 0
-            
-        except Exception as e:
-            self.logger.error(f"❌ Central Hub를 통한 AI 모델 로딩 실패: {e}")
-            return False
-    
-    def load_u2net_with_checkpoint(self, model_loader) -> Optional[nn.Module]:
-        """U2Net 모델을 체크포인트와 함께 로딩"""
-        try:
-            self.logger.info("🔄 U2Net 모델 로딩 시작...")
-            
-            # 체크포인트 경로 찾기
-            checkpoint_path = self._find_checkpoint_path('u2net_cloth')
-            if not checkpoint_path:
-                self.logger.warning("⚠️ U2Net 체크포인트를 찾을 수 없음")
-                # 체크포인트 없이 모델만 생성
-                model = EnhancedU2NetModel(num_classes=1, input_channels=3)
-                self.logger.info("✅ U2Net 모델 생성 완료 (체크포인트 없음)")
-                return model
-            
-            # Enhanced U2Net 모델 생성
-            model = EnhancedU2NetModel(num_classes=1, input_channels=3)
-            
-            # 체크포인트 로딩
-            if os.path.exists(checkpoint_path):
-                try:
-                    checkpoint = torch.load(checkpoint_path, map_location='cpu')
-                    self.logger.info(f"✅ U2Net 체크포인트 로딩 성공: {checkpoint_path}")
-                    
-                    # 체크포인트 키 매핑
-                    mapped_checkpoint = self.checkpoint_analyzer.map_checkpoint_keys(checkpoint)
-                    
-                    # 모델에 체크포인트 로드
-                    model.load_state_dict(mapped_checkpoint, strict=False)
-                    self.logger.info("✅ U2Net 모델에 체크포인트 적용 성공")
-                    
-                except Exception as e:
-                    self.logger.warning(f"⚠️ U2Net 체크포인트 로딩 실패: {e}")
-                    self.logger.info("ℹ️ 체크포인트 없이 모델만 사용")
-                    # 체크포인트 없이 모델만 반환
-            else:
-                self.logger.warning(f"⚠️ U2Net 체크포인트 파일이 존재하지 않음: {checkpoint_path}")
-                self.logger.info("ℹ️ 체크포인트 없이 모델만 사용")
-            
-            return model
-            
-        except Exception as e:
-            self.logger.error(f"❌ U2Net 모델 로딩 실패: {e}")
-            # 최종 폴백: 기본 모델 생성
-            try:
-                model = EnhancedU2NetModel(num_classes=1, input_channels=3)
-                self.logger.info("✅ U2Net 기본 모델 생성 성공 (폴백)")
-                return model
-            except Exception as e2:
-                self.logger.error(f"❌ U2Net 기본 모델 생성도 실패: {e2}")
-                return None
-    
-    def load_sam_with_checkpoint(self, model_loader) -> Optional[nn.Module]:
-        """SAM 모델을 체크포인트와 함께 로딩"""
-        try:
-            self.logger.info("🔄 SAM 모델 로딩 시작...")
-            
-            # 체크포인트 경로 찾기
-            checkpoint_path = self._find_checkpoint_path('sam_huge')
-            if not checkpoint_path:
-                self.logger.warning("⚠️ SAM 체크포인트를 찾을 수 없음")
-                # 체크포인트 없이 모델만 생성
-                model = EnhancedSAMModel()
-                self.logger.info("✅ SAM 모델 생성 완료 (체크포인트 없음)")
-                return model
-            
-            # Enhanced SAM 모델 생성
-            model = EnhancedSAMModel()
-            
-            # 체크포인트 로딩
-            if os.path.exists(checkpoint_path):
-                try:
-                    checkpoint = torch.load(checkpoint_path, map_location='cpu')
-                    self.logger.info(f"✅ SAM 체크포인트 로딩 성공: {checkpoint_path}")
-                    
-                    # 체크포인트 키 매핑
-                    mapped_checkpoint = self.checkpoint_analyzer.map_checkpoint_keys(checkpoint)
-                    
-                    # 모델에 체크포인트 로드
-                    model.load_state_dict(mapped_checkpoint, strict=False)
-                    self.logger.info("✅ SAM 모델에 체크포인트 적용 성공")
-                    
-                except Exception as e:
-                    self.logger.warning(f"⚠️ SAM 체크포인트 로딩 실패: {e}")
-                    self.logger.info("ℹ️ 체크포인트 없이 모델만 사용")
-                    # 체크포인트 없이 모델만 반환
-            else:
-                self.logger.warning(f"⚠️ SAM 체크포인트 파일이 존재하지 않음: {checkpoint_path}")
-                self.logger.info("ℹ️ 체크포인트 없이 모델만 사용")
-            
-            return model
-            
-        except Exception as e:
-            self.logger.error(f"❌ SAM 모델 로딩 실패: {e}")
-            # 최종 폴백: 기본 모델 생성
-            try:
-                model = EnhancedSAMModel()
-                self.logger.info("✅ SAM 기본 모델 생성 성공 (폴백)")
-                return model
-            except Exception as e2:
-                self.logger.error(f"❌ SAM 기본 모델 생성도 실패: {e2}")
-                return None
-    
-    def load_deeplabv3plus_with_checkpoint(self, model_loader) -> Optional[nn.Module]:
-        """DeepLabV3+ 모델을 체크포인트와 함께 로딩"""
-        try:
-            self.logger.info("🔄 DeepLabV3+ 모델 로딩 시작...")
-            
-            # 체크포인트 경로 찾기
-            checkpoint_path = self._find_checkpoint_path('deeplabv3_plus')
-            if not checkpoint_path:
-                self.logger.warning("⚠️ DeepLabV3+ 체크포인트를 찾을 수 없음")
-                # 체크포인트 없이 모델만 생성
-                model = EnhancedDeepLabV3PlusModel(num_classes=1, input_channels=3)
-                self.logger.info("✅ DeepLabV3+ 모델 생성 완료 (체크포인트 없음)")
-                return model
-            
-            # Enhanced DeepLabV3+ 모델 생성
-            model = EnhancedDeepLabV3PlusModel(num_classes=1, input_channels=3)
-            
-            # 체크포인트 로딩
-            if os.path.exists(checkpoint_path):
-                try:
-                    checkpoint = torch.load(checkpoint_path, map_location='cpu')
-                    self.logger.info(f"✅ DeepLabV3+ 체크포인트 로딩 성공: {checkpoint_path}")
-                    
-                    # 체크포인트 키 매핑
-                    mapped_checkpoint = self.checkpoint_analyzer.map_checkpoint_keys(checkpoint)
-                    
-                    # 모델에 체크포인트 로드
-                    model.load_state_dict(mapped_checkpoint, strict=False)
-                    self.logger.info("✅ DeepLabV3+ 모델에 체크포인트 적용 성공")
-                    
-                except Exception as e:
-                    self.logger.warning(f"⚠️ DeepLabV3+ 체크포인트 로딩 실패: {e}")
-                    self.logger.info("ℹ️ 체크포인트 없이 모델만 사용")
-                    # 체크포인트 없이 모델만 반환
-            else:
-                self.logger.warning(f"⚠️ DeepLabV3+ 체크포인트 파일이 존재하지 않음: {checkpoint_path}")
-                self.logger.info("ℹ️ 체크포인트 없이 모델만 사용")
-            
-            return model
-            
-        except Exception as e:
-            self.logger.error(f"❌ DeepLabV3+ 모델 로딩 실패: {e}")
-            # 최종 폴백: 기본 모델 생성
-            try:
-                model = EnhancedDeepLabV3PlusModel(num_classes=1, input_channels=3)
-                self.logger.info("✅ DeepLabV3+ 기본 모델 생성 성공 (폴백)")
-                return model
-            except Exception as e2:
-                self.logger.error(f"❌ DeepLabV3+ 기본 모델 생성도 실패: {e2}")
-                return None
-    
-    def _find_checkpoint_path(self, model_type: str) -> Optional[str]:
-        """체크포인트 경로 찾기 (개선된 버전)"""
-        if model_type not in self.model_paths:
-            self.logger.warning(f"⚠️ 알 수 없는 모델 타입: {model_type}")
-            return None
+    def get_model_info(self) -> Dict[str, Any]:
+        """모델 정보 반환"""
+        info = {
+            'models_dir': str(self.models_dir) if self.models_dir else None,
+            'checkpoints_dir': str(self.checkpoints_dir) if self.checkpoints_dir else None,
+            'checkpoint_available': CHECKPOINT_AVAILABLE,
+            'torch_available': TORCH_AVAILABLE,
+            'available_models': self.get_available_models(),
+            'loaded_models': list(self.loaded_models.keys()),
+            'device': str(self.u2net_loader.device) if TORCH_AVAILABLE else 'N/A'
+        }
         
-        # 현재 작업 디렉토리 기준으로 상대 경로 시도
-        current_dir = os.getcwd()
-        self.logger.info(f"🔍 체크포인트 검색 시작 (모델: {model_type}, 현재 디렉토리: {current_dir})")
+        return info
         
-        for path in self.model_paths[model_type]:
-            # 절대 경로 시도
-            if os.path.exists(path):
-                self.logger.info(f"✅ 체크포인트 발견 (절대 경로): {path}")
-                return path
-            
-            # 현재 디렉토리 기준 상대 경로 시도
-            relative_path = os.path.join(current_dir, path)
-            if os.path.exists(relative_path):
-                self.logger.info(f"✅ 체크포인트 발견 (상대 경로): {relative_path}")
-                return relative_path
-            
-            # 상위 디렉토리들에서도 검색
-            for i in range(1, 4):  # 최대 3단계 상위 디렉토리까지
-                parent_path = os.path.join(current_dir, *(['..'] * i), path)
-                if os.path.exists(parent_path):
-                    self.logger.info(f"✅ 체크포인트 발견 (상위 디렉토리 {i}단계): {parent_path}")
-                    return parent_path
+    def clear_cache(self):
+        """모델 캐시 정리"""
+        self.loaded_models.clear()
+        self.logger.info("✅ 모델 캐시 정리 완료")
         
-        self.logger.warning(f"⚠️ {model_type} 체크포인트를 찾을 수 없음")
-        self.logger.info(f"ℹ️ 시도한 경로들: {self.model_paths[model_type]}")
-        return None
-    
-    def _load_partial_checkpoint(self, model: nn.Module, checkpoint: Dict):
-        """부분 체크포인트 로딩 (개선된 버전)"""
-        try:
-            model_dict = model.state_dict()
-            pretrained_dict = {k: v for k, v in checkpoint.items() if k in model_dict}
+    def reload_model(self, model_name: str, use_checkpoint: bool = True) -> Optional[nn.Module]:
+        """특정 모델 재로딩"""
+        if model_name in self.loaded_models:
+            del self.loaded_models[model_name]
             
-            # 크기 불일치 처리
-            size_matched_dict = {}
-            for k, v in pretrained_dict.items():
-                if k in model_dict:
-                    if v.shape == model_dict[k].shape:
-                        size_matched_dict[k] = v
-                    else:
-                        self.logger.warning(f"⚠️ 크기 불일치 무시: {k} - 체크포인트 {v.shape} vs 모델 {model_dict[k].shape}")
-            
-            # 매칭되는 키들만 업데이트
-            model_dict.update(size_matched_dict)
-            model.load_state_dict(model_dict)
-            
-            self.logger.info(f"✅ 부분 체크포인트 로딩 성공: {len(size_matched_dict)}/{len(checkpoint)} 키 매칭")
-            self.logger.info(f"ℹ️ 매칭된 키들: {list(size_matched_dict.keys())[:5]}...")
-            
-        except Exception as e:
-            self.logger.warning(f"⚠️ 부분 체크포인트 로딩 실패: {e}")
-            # 실패 시 모델 초기화 상태 유지
-            self.logger.info("ℹ️ 모델 초기화 상태 유지")
-    
-    def load_models_directly(self) -> bool:
-        """직접 모델 로딩 (Central Hub 없이) - 개선된 버전"""
-        try:
-            self.logger.info("🔄 직접 Cloth Segmentation 모델 로딩 시작...")
-            
-            if not self.step:
-                self.logger.error("❌ step 인스턴스가 없음")
-                return False
-            
-            success_count = 0
-            total_models = 3
-            
-            # U2Net 모델 로딩
-            try:
-                u2net_model = self.load_u2net_with_checkpoint(None)
-                if u2net_model:
-                    self.step.ai_models['u2net_cloth'] = u2net_model
-                    self.step.models_loading_status['u2net_cloth'] = True
-                    self.step.loaded_models['u2net_cloth'] = u2net_model
-                    success_count += 1
-                    self.logger.info("✅ U2Net 모델 로딩 및 등록 성공")
-                else:
-                    self.step.models_loading_status['u2net_cloth'] = False
-                    self.logger.warning("⚠️ U2Net 모델 로딩 실패")
-            except Exception as e:
-                self.logger.error(f"❌ U2Net 모델 로딩 중 오류: {e}")
-                self.step.models_loading_status['u2net_cloth'] = False
-            
-            # SAM 모델 로딩
-            try:
-                sam_model = self.load_sam_with_checkpoint(None)
-                if sam_model:
-                    self.step.ai_models['sam_huge'] = sam_model
-                    self.step.models_loading_status['sam_huge'] = True
-                    self.step.loaded_models['sam_huge'] = sam_model
-                    success_count += 1
-                    self.logger.info("✅ SAM 모델 로딩 및 등록 성공")
-                else:
-                    self.step.models_loading_status['sam_huge'] = False
-                    self.logger.warning("⚠️ SAM 모델 로딩 실패")
-            except Exception as e:
-                self.logger.error(f"❌ SAM 모델 로딩 중 오류: {e}")
-                self.step.models_loading_status['sam_huge'] = False
-            
-            # DeepLabV3+ 모델 로딩
-            try:
-                deeplabv3plus_model = self.load_deeplabv3plus_with_checkpoint(None)
-                if deeplabv3plus_model:
-                    self.step.ai_models['deeplabv3_plus'] = deeplabv3plus_model
-                    self.step.models_loading_status['deeplabv3_plus'] = True
-                    self.step.loaded_models['deeplabv3_plus'] = deeplabv3plus_model
-                    success_count += 1
-                    self.logger.info("✅ DeepLabV3+ 모델 로딩 및 등록 성공")
-                else:
-                    self.step.models_loading_status['deeplabv3_plus'] = False
-                    self.logger.warning("⚠️ DeepLabV3+ 모델 로딩 실패")
-            except Exception as e:
-                self.logger.error(f"❌ DeepLabV3+ 모델 로딩 중 오류: {e}")
-                self.step.models_loading_status['deeplabv3_plus'] = False
-            
-            # 결과 요약
-            self.logger.info(f"🎯 직접 Cloth Segmentation 모델 로딩 완료: {success_count}/{total_models}개 모델 성공")
-            
-            # 성공한 모델들 정보 출력
-            for model_name, status in self.step.models_loading_status.items():
-                if status:
-                    model = self.step.ai_models.get(model_name)
-                    if model:
-                        self.logger.info(f"✅ {model_name}: {type(model).__name__}")
-                    else:
-                        self.logger.warning(f"⚠️ {model_name}: 상태는 True이지만 모델이 없음")
-                else:
-                    self.logger.warning(f"❌ {model_name}: 로딩 실패")
-            
-            return success_count > 0
-            
-        except Exception as e:
-            self.logger.error(f"❌ 직접 Cloth Segmentation 모델 로딩 실패: {e}")
-            return False
-    
-    def load_fallback_models(self) -> bool:
-        """폴백 모델 로딩 - 개선된 버전"""
-        try:
-            self.logger.info("🔄 Cloth Segmentation 폴백 모델 로딩 시작...")
-            
-            if not self.step:
-                self.logger.error("❌ step 인스턴스가 없음")
-                return False
-            
-            success_count = 0
-            total_models = 3
-            
-            # U2Net 폴백 모델 생성
-            try:
-                u2net_model = EnhancedU2NetModel(num_classes=1, input_channels=3)
-                self.step.ai_models['u2net_cloth'] = u2net_model
-                self.step.models_loading_status['u2net_cloth'] = True
-                self.step.loaded_models['u2net_cloth'] = u2net_model
-                success_count += 1
-                self.logger.info("✅ U2Net 폴백 모델 생성 및 등록 성공")
-            except Exception as e:
-                self.logger.error(f"❌ U2Net 폴백 모델 생성 실패: {e}")
-                self.step.models_loading_status['u2net_cloth'] = False
-            
-            # SAM 폴백 모델 생성
-            try:
-                sam_model = EnhancedSAMModel()
-                self.step.ai_models['sam_huge'] = sam_model
-                self.step.models_loading_status['sam_huge'] = True
-                self.step.loaded_models['sam_huge'] = sam_model
-                success_count += 1
-                self.logger.info("✅ SAM 폴백 모델 생성 및 등록 성공")
-            except Exception as e:
-                self.logger.error(f"❌ SAM 폴백 모델 생성 실패: {e}")
-                self.step.models_loading_status['sam_huge'] = False
-            
-            # DeepLabV3+ 폴백 모델 생성
-            try:
-                deeplabv3plus_model = EnhancedDeepLabV3PlusModel(num_classes=1, input_channels=3)
-                self.step.ai_models['deeplabv3_plus'] = deeplabv3plus_model
-                self.step.models_loading_status['deeplabv3_plus'] = True
-                self.step.loaded_models['deeplabv3_plus'] = deeplabv3plus_model
-                success_count += 1
-                self.logger.info("✅ DeepLabV3+ 폴백 모델 생성 및 등록 성공")
-            except Exception as e:
-                self.logger.error(f"❌ DeepLabV3+ 폴백 모델 생성 실패: {e}")
-                self.step.models_loading_status['deeplabv3_plus'] = False
-            
-            # 결과 요약
-            self.logger.info(f"🎯 폴백 모델 로딩 완료: {success_count}/{total_models}개 모델 성공")
-            
-            # 성공한 모델들 정보 출력
-            for model_name, status in self.step.models_loading_status.items():
-                if status:
-                    model = self.step.ai_models.get(model_name)
-                    if model:
-                        self.logger.info(f"✅ {model_name}: {type(model).__name__} (폴백)")
-                    else:
-                        self.logger.warning(f"⚠️ {model_name}: 상태는 True이지만 모델이 없음")
-                else:
-                    self.logger.warning(f"❌ {model_name}: 폴백 모델 생성 실패")
-            
-            return success_count > 0
-            
-        except Exception as e:
-            self.logger.error(f"❌ 폴백 모델 로딩 실패: {e}")
-            return False
-    
-    def create_step_interface(self, step_name: str):
-        """Step Interface 생성"""
-        try:
-            # Step Interface 생성 로직
-            interface = {
-                'step_name': step_name,
-                'model_loader': self,
-                'models': self.step.ai_models if self.step else {},
-                'status': self.step.models_loading_status if self.step else {}
-            }
-            return interface
-        except Exception as e:
-            self.logger.error(f"❌ Step Interface 생성 실패: {e}")
+        if model_name == 'u2net':
+            return self.load_u2net(use_checkpoint)
+        elif model_name == 'deeplabv3plus':
+            return self.load_deeplabv3plus(use_checkpoint)
+        elif model_name == 'sam':
+            return self.load_sam(use_checkpoint)
+        else:
+            self.logger.error(f"알 수 없는 모델 이름: {model_name}")
             return None

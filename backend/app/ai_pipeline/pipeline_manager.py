@@ -306,7 +306,7 @@ class DIContainerStepManager:
             1: {
                 'name': 'human_parsing',
                 'class_name': 'HumanParsingStep',
-                'module_path': 'app.ai_pipeline.steps.step_01_human_parsing',
+                'module_path': 'app.ai_pipeline.steps.step_01_human_parsing_models.step_01_human_parsing',
                 'process_method': 'process',
                 'required_inputs': ['person_image'],
                 'outputs': ['parsed_image', 'body_masks', 'human_regions']
@@ -314,7 +314,7 @@ class DIContainerStepManager:
             2: {
                 'name': 'pose_estimation',
                 'class_name': 'PoseEstimationStep',
-                'module_path': 'app.ai_pipeline.steps.step_02_pose_estimation',
+                'module_path': 'app.ai_pipeline.steps.step_02_pose_estimation_models.step_02_pose_estimation',
                 'process_method': 'process',
                 'required_inputs': ['image', 'parsed_image'],
                 'outputs': ['keypoints_18', 'skeleton_structure', 'pose_confidence']
@@ -322,7 +322,7 @@ class DIContainerStepManager:
             3: {
                 'name': 'cloth_segmentation',
                 'class_name': 'ClothSegmentationStep',
-                'module_path': 'app.ai_pipeline.steps.step_03_cloth_segmentation',
+                'module_path': 'app.ai_pipeline.steps.step_03_cloth_segmentation_models.step_03_cloth_segmentation',
                 'process_method': 'process',
                 'required_inputs': ['clothing_image', 'clothing_type'],
                 'outputs': ['clothing_masks', 'garment_type', 'segmentation_confidence']
@@ -330,7 +330,7 @@ class DIContainerStepManager:
             4: {
                 'name': 'geometric_matching',
                 'class_name': 'GeometricMatchingStep',
-                'module_path': 'app.ai_pipeline.steps.step_04_geometric_matching',
+                'module_path': 'app.ai_pipeline.steps.step_04_geometric_matching_models.step_04_geometric_matching',
                 'process_method': 'process',
                 'required_inputs': ['person_parsing', 'pose_keypoints', 'clothing_segmentation'],
                 'outputs': ['matching_matrix', 'correspondence_points', 'geometric_confidence']
@@ -338,7 +338,7 @@ class DIContainerStepManager:
             5: {
                 'name': 'cloth_warping',
                 'class_name': 'ClothWarpingStep',
-                'module_path': 'app.ai_pipeline.steps.step_05_cloth_warping',
+                'module_path': 'app.ai_pipeline.steps.step_05_cloth_warping_models.step_05_cloth_warping',
                 'process_method': 'process',
                 'required_inputs': ['cloth_image', 'person_image', 'geometric_matching'],
                 'outputs': ['warped_clothing', 'warping_field', 'warping_confidence']
@@ -346,7 +346,7 @@ class DIContainerStepManager:
             6: {
                 'name': 'virtual_fitting',
                 'class_name': 'VirtualFittingStep',
-                'module_path': 'app.ai_pipeline.steps.step_06_virtual_fitting',
+                'module_path': 'app.ai_pipeline.steps.step_06_virtual_fitting_models.step_06_virtual_fitting',
                 'process_method': 'process',
                 'required_inputs': ['person_image', 'warped_clothing', 'pose_data'],
                 'outputs': ['fitted_image', 'fitting_quality', 'virtual_confidence']
@@ -354,7 +354,7 @@ class DIContainerStepManager:
             7: {
                 'name': 'post_processing',
                 'class_name': 'PostProcessingStep',
-                'module_path': 'app.ai_pipeline.steps.step_07_post_processing',
+                'module_path': 'app.ai_pipeline.steps.post_processing.step_07_post_processing',
                 'process_method': 'process',
                 'required_inputs': ['fitted_image'],
                 'outputs': ['enhanced_image', 'enhancement_quality', 'processing_details']
@@ -362,7 +362,7 @@ class DIContainerStepManager:
             8: {
                 'name': 'quality_assessment',
                 'class_name': 'QualityAssessmentStep',
-                'module_path': 'app.ai_pipeline.steps.step_08_quality_assessment',
+                'module_path': 'app.ai_pipeline.steps.step_08_quality_assessment_models.step_08_quality_assessment',
                 'process_method': 'process',
                 'required_inputs': ['final_image', 'original_images'],
                 'outputs': ['quality_score', 'quality_metrics', 'assessment_details']

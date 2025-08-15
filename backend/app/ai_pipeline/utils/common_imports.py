@@ -19,42 +19,54 @@
 
 Author: MyCloset AI Team
 Date: 2025-08-03
-Version: 2.0 (Unified for All Steps)
+Version: 8.0 (Unified for All Steps + Duplicate Import Prevention)
 """
 
 # ==============================================
-# 🔥 1단계: 표준 라이브러리 imports (Python 모범 사례 순서)
+# 🔥 중복 import 방지 시스템
 # ==============================================
-
-import os
-import sys
-import gc
-import time
-import asyncio
-import logging
-import threading
-import traceback
-import hashlib
-import json
-import base64
-import math
-import warnings
-import weakref
-import uuid
-import subprocess
-import platform
-from datetime import datetime, timedelta
-
-from pathlib import Path
-from typing import Dict, Any, Optional, Tuple, List, Union, Callable, TYPE_CHECKING, Set
-from dataclasses import dataclass, field
-from enum import Enum, IntEnum
-from io import BytesIO, StringIO
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from functools import lru_cache, wraps, partial
-from contextlib import asynccontextmanager, contextmanager
-from collections import defaultdict, deque
-from itertools import chain
+if 'COMMON_IMPORTS_LOADED' in globals():
+    # 이미 로드된 경우 기존 객체들 반환
+    pass
+else:
+    # 최초 로드 시에만 실행
+    globals()['COMMON_IMPORTS_LOADED'] = True
+    
+    # ==============================================
+    # 🔥 1단계: 표준 라이브러리 imports
+    # ==============================================
+    import os
+    import sys
+    import gc
+    import time
+    import asyncio
+    import logging
+    import threading
+    import traceback
+    import hashlib
+    import json
+    import base64
+    import math
+    import warnings
+    import weakref
+    import uuid
+    import subprocess
+    import platform
+    from datetime import datetime, timedelta
+    
+    from pathlib import Path
+    from typing import Dict, Any, Optional, Tuple, List, Union, Callable, TYPE_CHECKING, Set
+    from dataclasses import dataclass, field
+    from enum import Enum, IntEnum
+    from io import BytesIO, StringIO
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    from functools import lru_cache, wraps, partial
+    from contextlib import asynccontextmanager, contextmanager
+    from collections import defaultdict, deque
+    from itertools import chain
+    
+    # ABC는 별도로 import
+    from abc import ABC, abstractmethod
 
 # ==============================================
 # 🔥 2단계: AI Pipeline 유틸리티 imports
@@ -97,6 +109,96 @@ except ImportError:
 # ==============================================
 # 🔥 3단계: 환경 감지 및 디바이스 설정 (최우선)
 # ==============================================
+
+# PyTorch imports
+try:
+    import torch
+    import torch.nn as nn
+    import torch.nn.functional as F
+    import torch.utils.data as data
+    from torch.utils.data import DataLoader, Dataset
+    from torch.autograd import Variable
+    import torch.autograd as autograd
+    from torch.cuda.amp import autocast
+    import torchvision.transforms as transforms
+    import torchvision.models as models
+    TORCH_AVAILABLE = True
+    print("✅ PyTorch 로드 완료")
+except ImportError:
+    torch = None
+    nn = None
+    F = None
+    data = None
+    DataLoader = None
+    Dataset = None
+    Variable = None
+    autograd = None
+    autocast = None
+    transforms = None
+    models = None
+    TORCH_AVAILABLE = False
+    print("⚠️ PyTorch 없음 - 제한된 기능만 사용 가능")
+
+# MPS (Apple Silicon) 지원 확인
+try:
+    if TORCH_AVAILABLE and hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+        MPS_AVAILABLE = True
+        print("🍎 MPS 사용 가능")
+    else:
+        MPS_AVAILABLE = False
+        print("⚠️ MPS 사용 불가")
+except:
+    MPS_AVAILABLE = False
+    print("⚠️ MPS 확인 실패")
+
+# NumPy
+try:
+    import numpy as np
+    NP_AVAILABLE = True
+    print("✅ NumPy 로드 완료")
+except ImportError:
+    np = None
+    NP_AVAILABLE = False
+    print("⚠️ NumPy 없음")
+
+# PIL (Pillow)
+try:
+    from PIL import Image, ImageDraw, ImageFont, ImageFilter, ImageEnhance
+    PIL_AVAILABLE = True
+    print("✅ PIL 로드 완료")
+except ImportError:
+    Image = None
+    ImageDraw = None
+    ImageFont = None
+    ImageFilter = None
+    ImageEnhance = None
+    PIL_AVAILABLE = False
+    print("⚠️ PIL 없음")
+
+# OpenCV
+try:
+    import cv2
+    CV2_AVAILABLE = True
+    print("✅ OpenCV 로드 완료")
+except ImportError:
+    cv2 = None
+    CV2_AVAILABLE = False
+    print("⚠️ OpenCV 없음")
+
+# SciPy
+try:
+    import scipy
+    from scipy import ndimage, signal, optimize, stats
+    SCIPY_AVAILABLE = True
+    print("✅ SciPy 로드 완료")
+except ImportError:
+    scipy = None
+    ndimage = None
+    signal = None
+    optimize = None
+    stats = None
+    SCIPY_AVAILABLE = False
+    print("⚠️ SciPy 없음")
 
 def detect_m3_max() -> bool:
     """M3 Max 칩셋 감지"""
@@ -188,52 +290,57 @@ except ImportError as e:
     np = None
 
 # ==============================================
-# PyTorch (필수 - 모든 AI Step에서 사용)
+# PyTorch (핵심 AI 라이브러리)
 # ==============================================
 try:
     import torch
     import torch.nn as nn
     import torch.nn.functional as F
     from torch.utils.data import DataLoader
-    from torch.cuda.amp import autocast
-    import torchvision.transforms as transforms
+    from torch import autocast
+    from torchvision import transforms
     from torchvision.transforms.functional import resize, to_pil_image, to_tensor
+    
+    # autograd는 torch에서 직접 import
+    import torch.autograd as autograd
     
     TORCH_AVAILABLE = True
     TORCH_VERSION = torch.__version__
+    print(f"✅ PyTorch {TORCH_VERSION} 로드 완료")
     
-    # 디바이스 자동 감지
+    # MPS 지원 확인
     if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
         MPS_AVAILABLE = True
-        DEVICE = "mps"
-        # M3 Max 최적화
-        if IS_M3_MAX:
-            os.environ['PYTORCH_MPS_HIGH_WATERMARK_RATIO'] = '0.0'
-            os.environ['TORCH_MPS_PREFER_METAL'] = '1'
-            try:
-                torch.mps.set_per_process_memory_fraction(0.7)
-            except:
-                pass
-    elif torch.cuda.is_available():
+        print("🍎 MPS 사용 가능")
+    
+    # CUDA 지원 확인
+    if torch.cuda.is_available():
         CUDA_AVAILABLE = True
+        print("🚀 CUDA 사용 가능")
+    
+    # 기본 디바이스 설정
+    if MPS_AVAILABLE:
+        DEVICE = "mps"
+    elif CUDA_AVAILABLE:
         DEVICE = "cuda"
     else:
         DEVICE = "cpu"
-        
-    print(f"✅ PyTorch {TORCH_VERSION} 로드 완료, 디바이스: {DEVICE}")
-    if MPS_AVAILABLE:
-        print("🍎 MPS 사용 가능")
-    if CUDA_AVAILABLE:
-        print("🔥 CUDA 사용 가능")
-        
+    
+    print(f"🎯 기본 디바이스: {DEVICE}")
+    
 except ImportError as e:
     print(f"❌ PyTorch import 실패: {e}")
+    TORCH_AVAILABLE = False
     torch = None
     nn = None
     F = None
-    transforms = None
     DataLoader = None
     autocast = None
+    transforms = None
+    resize = None
+    to_pil_image = None
+    to_tensor = None
+    autograd = None
 
 # ==============================================
 # PIL (필수 - 모든 이미지 처리 Step에서 사용)
@@ -721,10 +828,10 @@ __all__ = [
     'Path', 'Dict', 'Any', 'Optional', 'Tuple', 'List', 'Union', 'Callable', 'TYPE_CHECKING', 'Set',
     'dataclass', 'field', 'Enum', 'IntEnum', 'BytesIO', 'StringIO', 'ThreadPoolExecutor',
     'lru_cache', 'wraps', 'partial', 'asynccontextmanager', 'contextmanager',
-    'defaultdict', 'deque', 'chain',
+    'defaultdict', 'deque', 'chain', 'ABC', 'abstractmethod',
     
     # AI/ML 라이브러리
-    'np', 'torch', 'nn', 'F', 'DataLoader', 'autocast', 'transforms',
+    'np', 'torch', 'nn', 'F', 'DataLoader', 'autograd', 'autocast', 'transforms',
     'resize', 'to_pil_image', 'to_tensor',
     'Image', 'ImageEnhance', 'ImageFilter', 'ImageDraw', 'ImageFont', 'ImageOps',
     'cv2', 'scipy', 'ndimage', 'gaussian_filter', 'median_filter', 'convolve2d',

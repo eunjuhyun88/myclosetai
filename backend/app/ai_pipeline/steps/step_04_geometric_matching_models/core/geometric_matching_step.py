@@ -11,13 +11,13 @@ import time
 from typing import Dict, Any, List, Optional, Tuple
 from pathlib import Path
 
-from ...base.base_step_mixin import BaseStepMixin
+from ...base.core.base_step_mixin import BaseStepMixin
 from ..utils.model_loader import ModelLoader
 from .config import GeometricMatchingConfig, ProcessingStatus
 from ..models import (
     DeepLabV3PlusBackbone,
     ASPPModule,
-    SelfAttentionKeypointMatcher,
+            # SelfAttentionKeypointMatcher,  # 제거됨
     EdgeAwareTransformationModule,
     ProgressiveGeometricRefinement,
     GeometricMatchingModule,

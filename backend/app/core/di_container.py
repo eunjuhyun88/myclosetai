@@ -1394,7 +1394,18 @@ class CentralHubDIContainer:
             self.logger.debug("🔄 MemoryManager 생성 시작...")
             
             # 🔥 MemoryManager는 ModelLoader에 의존하지 않으므로 안전
-            from ..ai_pipeline.interface.step_interface import MemoryManager
+            # 동적 import로 순환참조 방지
+            import importlib.util
+            spec = importlib.util.spec_from_file_location(
+                "step_interface", 
+                os.path.join(os.path.dirname(__file__), "..", "ai_pipeline", "interface", "step_interface.py")
+            )
+            if spec and spec.loader:
+                step_interface_module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(step_interface_module)
+                MemoryManager = getattr(step_interface_module, 'MemoryManager')
+            else:
+                raise ImportError("MemoryManager 모듈을 찾을 수 없습니다")
             
             # M3 Max 메모리 최적화
             if IS_M3_MAX and MEMORY_GB >= 128:
@@ -3108,28 +3119,61 @@ def create_default_service(service_name: str) -> Any:
     """기본 서비스 팩토리"""
     try:
         if service_name == 'model_loader':
-            # ModelLoader 동적 생성
+            # ModelLoader 동적 생성 - 순환참조 방지
             try:
-                from ..ai_pipeline.utils.model_loader import ModelLoader
-                return ModelLoader()
+                # 인터페이스 기반으로 동적 생성
+                import importlib.util
+                spec = importlib.util.spec_from_file_location(
+                    "model_loader", 
+                    os.path.join(os.path.dirname(__file__), "..", "ai_pipeline", "models", "model_loader.py")
+                )
+                if spec and spec.loader:
+                    model_loader_module = importlib.util.module_from_spec(spec)
+                    spec.loader.exec_module(model_loader_module)
+                    ModelLoader = getattr(model_loader_module, 'CentralModelLoader')
+                    return ModelLoader()
+                else:
+                    raise ImportError("ModelLoader 모듈을 찾을 수 없습니다")
             except ImportError:
                 logger.warning("⚠️ ModelLoader import 실패, Mock 생성")
                 return create_mock_model_loader()
                 
         elif service_name == 'memory_manager':
-            # MemoryManager 동적 생성
+            # MemoryManager 동적 생성 - 순환참조 방지
             try:
-                from ..ai_pipeline.utils.memory_manager import MemoryManager
-                return MemoryManager()
+                # 인터페이스 기반으로 동적 생성
+                import importlib.util
+                spec = importlib.util.spec_from_file_location(
+                    "memory_manager", 
+                    os.path.join(os.path.dirname(__file__), "..", "ai_pipeline", "utils", "memory_manager.py")
+                )
+                if spec and spec.loader:
+                    memory_manager_module = importlib.util.module_from_spec(spec)
+                    spec.loader.exec_module(memory_manager_module)
+                    MemoryManager = getattr(memory_manager_module, 'MemoryManager')
+                    return MemoryManager()
+                else:
+                    raise ImportError("MemoryManager 모듈을 찾을 수 없습니다")
             except ImportError:
                 logger.warning("⚠️ MemoryManager import 실패, Mock 생성")
                 return create_mock_memory_manager()
                 
         elif service_name == 'data_converter':
-            # DataConverter 동적 생성
+            # DataConverter 동적 생성 - 순환참조 방지
             try:
-                from ..ai_pipeline.utils.data_converter import DataConverter
-                return DataConverter()
+                # 인터페이스 기반으로 동적 생성
+                import importlib.util
+                spec = importlib.util.spec_from_file_location(
+                    "data_converter", 
+                    os.path.join(os.path.dirname(__file__), "..", "ai_pipeline", "utils", "data_converter.py")
+                )
+                if spec and spec.loader:
+                    data_converter_module = importlib.util.module_from_spec(spec)
+                    spec.loader.exec_module(data_converter_module)
+                    DataConverter = getattr(data_converter_module, 'DataConverter')
+                    return DataConverter()
+                else:
+                    raise ImportError("DataConverter 모듈을 찾을 수 없습니다")
             except ImportError:
                 logger.warning("⚠️ DataConverter import 실패, Mock 생성")
                 return create_mock_data_converter()

@@ -1,0 +1,43 @@
+{
+  "total_steps": 6,
+  "successful_steps": 0,
+  "failed_steps": 6,
+  "success_rate": 0.0,
+  "step_results": {
+    "human_parsing": {
+      "success": false,
+      "error": "NoneType takes no arguments",
+      "step_name": "human_parsing",
+      "traceback": "Traceback (most recent call last):\n  File \"/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/steps/test_step_by_step.py\", line 76, in test_step_01_human_parsing\n    from step_01_human_parsing_models.step_01_human_parsing import HumanParsingStep\n  File \"/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/steps/step_01_human_parsing_models/__init__.py\", line 69, in <module>\n    from .step_01_human_parsing import HumanParsingStep\n  File \"/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/steps/step_01_human_parsing_models/step_01_human_parsing.py\", line 89, in <module>\n    class HumanParsingStep(BaseStepMixin):\nTypeError: NoneType takes no arguments\n"
+    },
+    "pose_estimation": {
+      "success": false,
+      "error": "NoneType takes no arguments",
+      "step_name": "pose_estimation",
+      "traceback": "Traceback (most recent call last):\n  File \"/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/steps/test_step_by_step.py\", line 138, in test_step_02_pose_estimation\n    from step_02_pose_estimation_models.step_02_pose_estimation import PoseEstimationStep\n  File \"/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/steps/step_02_pose_estimation_models/__init__.py\", line 69, in <module>\n    from .step_02_pose_estimation import PoseEstimationStep\n  File \"/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/steps/step_02_pose_estimation_models/step_02_pose_estimation.py\", line 97, in <module>\n    class PoseEstimationStep(BaseStepMixin):\nTypeError: NoneType takes no arguments\n"
+    },
+    "cloth_segmentation": {
+      "success": false,
+      "error": "ClothSegmentationStep import 실패",
+      "step_name": "cloth_segmentation"
+    },
+    "geometric_matching": {
+      "success": false,
+      "error": "NoneType takes no arguments",
+      "step_name": "geometric_matching",
+      "traceback": "Traceback (most recent call last):\n  File \"/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/steps/test_step_by_step.py\", line 254, in test_step_04_geometric_matching\n    from step_04_geometric_matching_models.step_04_geometric_matching import GeometricMatchingStep\n  File \"/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/steps/step_04_geometric_matching_models/__init__.py\", line 69, in <module>\n    from .step_04_geometric_matching import GeometricMatchingStep\n  File \"/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/steps/step_04_geometric_matching_models/step_04_geometric_matching.py\", line 101, in <module>\n    class GeometricMatchingStep(BaseStepMixin):\nTypeError: NoneType takes no arguments\n"
+    },
+    "cloth_warping": {
+      "success": false,
+      "error": "NoneType takes no arguments",
+      "step_name": "cloth_warping",
+      "traceback": "Traceback (most recent call last):\n  File \"/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/steps/test_step_by_step.py\", line 315, in test_step_05_cloth_warping\n    from step_05_cloth_warping_models.step_05_cloth_warping import ClothWarpingStep\n  File \"/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/steps/step_05_cloth_warping_models/__init__.py\", line 69, in <module>\n    from .step_05_cloth_warping import ClothWarpingStep\n  File \"/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/steps/step_05_cloth_warping_models/step_05_cloth_warping.py\", line 99, in <module>\n    class ClothWarpingStep(BaseStepMixin):\nTypeError: NoneType takes no arguments\n"
+    },
+    "virtual_fitting": {
+      "success": false,
+      "error": "NoneType takes no arguments",
+      "step_name": "virtual_fitting",
+      "traceback": "Traceback (most recent call last):\n  File \"/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/steps/test_step_by_step.py\", line 376, in test_step_06_virtual_fitting\n    from step_06_virtual_fitting_models.step_06_virtual_fitting import VirtualFittingStep\n  File \"/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/steps/step_06_virtual_fitting_models/__init__.py\", line 69, in <module>\n    from .step_06_virtual_fitting import VirtualFittingStep\n  File \"/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/steps/step_06_virtual_fitting_models/step_06_virtual_fitting.py\", line 80, in <module>\n    class VirtualFittingStep(BaseStepMixin):\nTypeError: NoneType takes no arguments\n"
+    }
+  }
+}

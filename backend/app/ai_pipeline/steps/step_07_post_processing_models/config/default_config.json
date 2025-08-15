@@ -1,0 +1,57 @@
+{
+  "swinir": {
+    "img_size": 64,
+    "patch_size": 1,
+    "in_chans": 3,
+    "embed_dim": 96,
+    "depths": [6, 6, 6, 6, 6, 6],
+    "num_heads": [6, 6, 6, 6, 6, 6],
+    "window_size": 7,
+    "mlp_ratio": 4.0,
+    "qkv_bias": true,
+    "qk_scale": null,
+    "drop_rate": 0.0,
+    "attn_drop_rate": 0.0,
+    "drop_path_rate": 0.1,
+    "ape": false,
+    "patch_norm": true,
+    "use_checkpoint": false,
+    "upscale": 4,
+    "img_range": 1.0,
+    "upsampler": "nearest+conv",
+    "resi_connection": "1conv"
+  },
+  "realesrgan": {
+    "num_feat": 64,
+    "num_block": 23,
+    "num_grow_ch": 32,
+    "upscale": 4,
+    "num_in_ch": 3,
+    "num_out_ch": 3,
+    "task": "realesrgan"
+  },
+  "gfpgan": {
+    "out_size": 512,
+    "num_style_feat": 512,
+    "channel_multiplier": 2,
+    "decoder_load_path": null,
+    "fix_decoder": true,
+    "num_mlp": 8,
+    "input_is_latent": true,
+    "different_w": true,
+    "narrow": 1,
+    "sft_half": true
+  },
+  "codeformer": {
+    "dim_embd": 512,
+    "n_head": 8,
+    "n_layers": 9,
+    "codebook_size": 1024,
+    "latent_dim": 256,
+    "channels": [64, 128, 256, 512],
+    "img_size": 256
+  },
+  "checkpoint_dir": "checkpoints",
+  "device": "auto",
+  "model_cache_size": 2
+}

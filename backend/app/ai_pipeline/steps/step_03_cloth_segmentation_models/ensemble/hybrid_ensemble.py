@@ -1,19 +1,37 @@
 #!/usr/bin/env python3
 """
-🔥 MyCloset AI - Step 03: 의류 세그멘테이션 - Hybrid Ensemble
-=====================================================================
+🔥 MyCloset AI - Cloth Segmentation Hybrid Ensemble System
+==========================================================
 
-앙상블 관련 함수들을 분리한 모듈
-
-Author: MyCloset AI Team  
-Date: 2025-08-01
-Version: 1.0
+🎯 다중 모델 앙상블을 통한 정확도 향상
+✅ 8개 Cloth Segmentation 모델 통합
+✅ M3 Max 최적화
+✅ 메모리 효율적 처리
+✅ 품질 기반 가중치 조정
 """
 
-import logging
-import time
+# PyTorch import 시도
+try:
+    import torch
+    import torch.nn as nn
+    import torch.nn.functional as F
+    TORCH_AVAILABLE = True
+except ImportError:
+    TORCH_AVAILABLE = False
+    torch = None
+    # torch가 없을 때는 기본 타입 사용
+    class MockNNModule:
+        """Mock nn.Module (torch 없음)"""
+        pass
+    # nn.Module을 MockNNModule으로 대체
+    class nn:
+        Module = MockNNModule
+    F = None
+
 import numpy as np
-from typing import Dict, Any, List, Tuple, Optional
+import logging
+from typing import Dict, List, Tuple, Optional, Union
+from dataclasses import dataclass
 
 # 공통 imports 시스템 사용
 try:
@@ -24,444 +42,549 @@ except ImportError:
     import numpy as np
     import cv2
 
+# 로거 설정
 logger = logging.getLogger(__name__)
 
-def _run_hybrid_ensemble_sync(
-    self, 
-    image: np.ndarray, 
-    person_parsing: Dict[str, Any],
-    pose_info: Dict[str, Any]
-) -> Dict[str, Any]:
+@dataclass
+class EnsembleConfig:
+    """앙상블 설정"""
+    method: str = "quality_weighted"  # voting, weighted, quality, simple_average
+    quality_threshold: float = 0.7
+    confidence_threshold: float = 0.5
+    max_models: int = 8
+    use_mps: bool = True
+    memory_efficient: bool = True
+
+class ClothSegmentationEnsembleSystem(nn.Module):
     """
-    하이브리드 앙상블 세그멘테이션 실행 (동기)
+    🔥 Cloth Segmentation 앙상블 시스템
+    
+    다중 모델의 출력을 통합하여 최종 의류 분할 결과를 생성합니다.
+    """
+    
+    def __init__(self, config: EnsembleConfig = None):
+        super().__init__()
+        self.config = config or EnsembleConfig()
+        self.logger = logging.getLogger(__name__)
+        
+        # MPS 디바이스 확인
+        self.device = torch.device("mps" if torch.backends.mps.is_available() and self.config.use_mps else "cpu")
+        self.logger.info(f"🎯 Cloth Segmentation 앙상블 시스템 초기화 (디바이스: {self.device})")
+        
+        # 앙상블 가중치 초기화
+        self.ensemble_weights = nn.Parameter(torch.ones(8) / 8)  # 8개 모델
+        
+        # 품질 평가 메트릭
+        self.quality_metrics = {
+            "confidence": 0.0,
+            "spatial_consistency": 0.0,
+            "segmentation_quality": 0.0,
+            "boundary_accuracy": 0.0
+        }
+        
+        self.logger.info("✅ Cloth Segmentation 앙상블 시스템 초기화 완료")
+    
+    def forward(self, model_outputs: List[torch.Tensor], 
+                confidences: List[float] = None,
+                quality_scores: List[float] = None) -> torch.Tensor:
+        """
+        앙상블 추론 수행
     
     Args:
-        image: 입력 이미지
-        person_parsing: 인체 파싱 결과
-        pose_info: 포즈 정보
+            model_outputs: 각 모델의 출력 (List[torch.Tensor])
+            confidences: 각 모델의 신뢰도 (List[float])
+            quality_scores: 각 모델의 품질 점수 (List[float])
         
     Returns:
-        앙상블 결과
-    """
-    try:
-        logger.info("🔥 하이브리드 앙상블 세그멘테이션 시작")
+            앙상블된 의류 분할 결과
+        """
+        if not model_outputs:
+            raise ValueError("모델 출력이 비어있습니다.")
         
-        # 사용 가능한 모델들 확인
-        available_models = self._detect_available_methods()
-        if not available_models:
-            logger.warning("⚠️ 사용 가능한 모델이 없음")
-            return self._create_fallback_segmentation_result(image.shape)
+        # 입력 검증
+        num_models = len(model_outputs)
+        if num_models > self.config.max_models:
+            self.logger.warning(f"모델 수가 최대 허용치를 초과합니다: {num_models} > {self.config.max_models}")
+            model_outputs = model_outputs[:self.config.max_models]
         
-        # 앙상블 실행
-        ensemble_results = []
-        methods_used = []
-        execution_times = []
+        # 디바이스 이동
+        model_outputs = [output.to(self.device) if isinstance(output, torch.Tensor) else torch.tensor(output, device=self.device) 
+                        for output in model_outputs]
         
-        for method in available_models[:3]:  # 최대 3개 모델만 사용
-            try:
-                start_time = time.time()
-                
-                if method == SegmentationMethod.U2NET_CLOTH:
-                    result = self._run_u2net_segmentation(image, person_parsing, pose_info)
-                elif method == SegmentationMethod.SAM_HUGE:
-                    result = self._run_sam_segmentation(image, person_parsing, pose_info)
-                elif method == SegmentationMethod.DEEPLABV3_PLUS:
-                    result = self._run_deeplabv3plus_segmentation(image, person_parsing, pose_info)
+        # 앙상블 방법에 따른 통합
+        if self.config.method == "voting":
+            ensemble_output = self._voting_ensemble(model_outputs, confidences)
+        elif self.config.method == "weighted":
+            ensemble_output = self._weighted_ensemble(model_outputs, confidences)
+        elif self.config.method == "quality":
+            ensemble_output = self._quality_weighted_ensemble(model_outputs, quality_scores)
+        elif self.config.method == "simple_average":
+            ensemble_output = self._simple_average_ensemble(model_outputs)
+        else:
+            self.logger.warning(f"알 수 없는 앙상블 방법: {self.config.method}, 기본값 사용")
+            ensemble_output = self._quality_weighted_ensemble(model_outputs, quality_scores)
+        
+        # 품질 메트릭 업데이트
+        self._update_quality_metrics(ensemble_output, model_outputs)
+        
+        return ensemble_output
+    
+    def _voting_ensemble(self, model_outputs: List[torch.Tensor], 
+                         confidences: List[float] = None) -> torch.Tensor:
+        """투표 기반 앙상블"""
+        self.logger.debug("🎯 투표 기반 앙상블 수행")
+        
+        # 신뢰도 기반 가중치 계산
+        if confidences:
+            weights = torch.tensor(confidences, device=self.device)
+            weights = F.softmax(weights, dim=0)
+        else:
+            weights = torch.ones(len(model_outputs), device=self.device) / len(model_outputs)
+        
+        # 가중 평균 계산
+        ensemble_output = torch.zeros_like(model_outputs[0])
+        for i, output in enumerate(model_outputs):
+            ensemble_output += weights[i] * output
+        
+        return ensemble_output
+    
+    def _weighted_ensemble(self, model_outputs: List[torch.Tensor], 
+                          confidences: List[float] = None) -> torch.Tensor:
+        """가중치 기반 앙상블"""
+        self.logger.debug("🎯 가중치 기반 앙상블 수행")
+        
+        # 신뢰도 기반 가중치
+        if confidences:
+            weights = torch.tensor(confidences, device=self.device)
+            weights = F.softmax(weights, dim=0)
+        else:
+            weights = self.ensemble_weights[:len(model_outputs)]
+            weights = F.softmax(weights, dim=0)
+        
+        # 가중 평균 계산
+        ensemble_output = torch.zeros_like(model_outputs[0])
+        for i, output in enumerate(model_outputs):
+            ensemble_output += weights[i] * output
+        
+        return ensemble_output
+    
+    def _quality_weighted_ensemble(self, model_outputs: List[torch.Tensor], 
+                                 quality_scores: List[float] = None) -> torch.Tensor:
+        """품질 기반 가중치 앙상블"""
+        self.logger.debug("🎯 품질 기반 가중치 앙상블 수행")
+        
+        # 품질 점수 기반 가중치
+        if quality_scores:
+            weights = torch.tensor(quality_scores, device=self.device)
+            weights = F.softmax(weights, dim=0)
+        else:
+            # 기본 품질 점수 (신뢰도 기반)
+            weights = torch.ones(len(model_outputs), device=self.device) / len(model_outputs)
+        
+        # 품질 임계값 적용
+        quality_mask = weights > self.config.quality_threshold
+        if quality_mask.sum() > 0:
+            weights = weights * quality_mask.float()
+            weights = F.softmax(weights, dim=0)
+        
+        # 가중 평균 계산
+        ensemble_output = torch.zeros_like(model_outputs[0])
+        for i, output in enumerate(model_outputs):
+            ensemble_output += weights[i] * output
+        
+        return ensemble_output
+    
+    def _simple_average_ensemble(self, model_outputs: List[torch.Tensor]) -> torch.Tensor:
+        """단순 평균 앙상블"""
+        self.logger.debug("🎯 단순 평균 앙상블 수행")
+        
+        # 모든 모델 출력의 평균
+        ensemble_output = torch.stack(model_outputs).mean(dim=0)
+        return ensemble_output
+    
+    def _update_quality_metrics(self, ensemble_output: torch.Tensor, 
+                              model_outputs: List[torch.Tensor]):
+        """품질 메트릭 업데이트"""
+        # 신뢰도 계산
+        if ensemble_output.dim() > 0:
+            self.quality_metrics["confidence"] = float(ensemble_output.mean().item())
+        
+        # 공간 일관성 계산
+        if len(model_outputs) > 1:
+            spatial_consistency = self._calculate_spatial_consistency(model_outputs)
+            self.quality_metrics["spatial_consistency"] = spatial_consistency
+        
+        # 분할 품질 계산
+        segmentation_quality = self._calculate_segmentation_quality(ensemble_output)
+        self.quality_metrics["segmentation_quality"] = segmentation_quality
+        
+        # 경계 정확도 계산
+        boundary_accuracy = self._calculate_boundary_accuracy(ensemble_output)
+        self.quality_metrics["boundary_accuracy"] = boundary_accuracy
+    
+    def _calculate_spatial_consistency(self, model_outputs: List[torch.Tensor]) -> float:
+        """공간 일관성 계산"""
+        if len(model_outputs) < 2:
+            return 0.0
+        
+        # 각 모델 출력 간의 유사도 계산
+        similarities = []
+        for i in range(len(model_outputs)):
+            for j in range(i + 1, len(model_outputs)):
+                sim = F.cosine_similarity(
+                    model_outputs[i].flatten(), 
+                    model_outputs[j].flatten(), 
+                    dim=0
+                )
+                similarities.append(sim.item())
+        
+        return float(np.mean(similarities)) if similarities else 0.0
+    
+    def _calculate_segmentation_quality(self, output: torch.Tensor) -> float:
+        """분할 품질 계산"""
+        if output.dim() == 0:
+            return 0.0
+        
+        # 분할 마스크의 품질 평가
+        if output.dim() > 1:
+            # 2D 이상인 경우 평균값 사용
+            output_flat = output.mean(dim=0) if output.dim() > 1 else output
+        else:
+            output_flat = output
+        
+        # 분할 품질 (entropy 기반)
+        if output_flat.numel() > 1:
+            probs = F.softmax(output_flat, dim=0)
+            entropy = -torch.sum(probs * torch.log(probs + 1e-8))
+            max_entropy = torch.log(torch.tensor(float(output_flat.numel())))
+            quality_score = float(entropy / max_entropy)
+        else:
+            quality_score = 0.0
+        
+        return quality_score
+    
+    def _calculate_boundary_accuracy(self, output: torch.Tensor) -> float:
+        """경계 정확도 계산"""
+        if output.dim() == 0:
+            return 0.0
+        
+        # 경계의 선명도 계산
+        if output.dim() > 2:
+            # 2D 이미지의 경우 경계 검출
+            batch_size = output.size(0)
+            boundary_scores = []
+            
+            for b in range(batch_size):
+                # Sobel 필터를 사용한 경계 검출
+                if output.size(1) > 1:  # 채널이 있는 경우
+                    img = output[b].mean(dim=0)  # 채널 평균
                 else:
-                    continue
+                    img = output[b]
                 
-                execution_time = time.time() - start_time
-                
-                if result and result.get('success', False):
-                    ensemble_results.append(result)
-                    methods_used.append(method.value)
-                    execution_times.append(execution_time)
-                    logger.info(f"✅ {method.value} 완료 ({execution_time:.2f}s)")
-                
-            except Exception as e:
-                logger.error(f"❌ {method.value} 실행 실패: {e}")
-                continue
-        
-        if not ensemble_results:
-            logger.warning("⚠️ 모든 모델 실행 실패")
-            return self._create_fallback_segmentation_result(image.shape)
-        
-        # 앙상블 결과 결합
-        final_result = self._combine_ensemble_results(
-            ensemble_results, methods_used, execution_times, image, person_parsing
-        )
-        
-        logger.info(f"🔥 하이브리드 앙상블 완료 (사용된 모델: {methods_used})")
-        return final_result
-        
-    except Exception as e:
-        logger.error(f"❌ 하이브리드 앙상블 실패: {e}")
-        return self._create_fallback_segmentation_result(image.shape)
+                # 경계 강도 계산
+                if img.dim() == 2:
+                    # 2D 텐서를 numpy로 변환
+                    img_np = img.detach().cpu().numpy()
+                    
+                    # Sobel 필터 적용
+                    sobel_x = cv2.Sobel(img_np, cv2.CV_64F, 1, 0, ksize=3)
+                    sobel_y = cv2.Sobel(img_np, cv2.CV_64F, 0, 1, ksize=3)
+                    
+                    # 경계 강도
+                    boundary_magnitude = np.sqrt(sobel_x**2 + sobel_y**2)
+                    boundary_score = float(np.mean(boundary_magnitude))
+                    boundary_scores.append(boundary_score)
+            
+            return float(np.mean(boundary_scores)) if boundary_scores else 0.0
+        else:
+            return 0.0
+    
+    def get_quality_metrics(self) -> Dict[str, float]:
+        """품질 메트릭 반환"""
+        return self.quality_metrics.copy()
+    
+    def update_ensemble_weights(self, new_weights: torch.Tensor):
+        """앙상블 가중치 업데이트"""
+        if new_weights.shape == self.ensemble_weights.shape:
+            with torch.no_grad():
+                self.ensemble_weights.copy_(new_weights)
+            self.logger.info("✅ 앙상블 가중치 업데이트 완료")
+        else:
+            self.logger.warning(f"가중치 차원 불일치: {new_weights.shape} vs {self.ensemble_weights.shape}")
+    
+    def get_ensemble_info(self) -> Dict[str, Union[str, int, float]]:
+        """앙상블 시스템 정보 반환"""
+        return {
+            "method": self.config.method,
+            "num_models": self.config.max_models,
+            "device": str(self.device),
+            "quality_threshold": self.config.quality_threshold,
+            "confidence_threshold": self.config.confidence_threshold,
+            "memory_efficient": self.config.memory_efficient,
+            "current_weights": self.ensemble_weights.detach().cpu().numpy().tolist()
+        }
 
-def _combine_ensemble_results(
-    self,
-    results: List[Dict[str, Any]],
-    methods_used: List[str],
-    execution_times: List[float],
-    image: np.ndarray,
-    person_parsing: Dict[str, Any]
-) -> Dict[str, Any]:
+# 앙상블 시스템 인스턴스 생성 함수
+def create_cloth_segmentation_ensemble(config: EnsembleConfig = None) -> ClothSegmentationEnsembleSystem:
+    """Cloth Segmentation 앙상블 시스템 생성"""
+    return ClothSegmentationEnsembleSystem(config)
+
+# 기본 설정으로 앙상블 시스템 생성
+def create_default_ensemble() -> ClothSegmentationEnsembleSystem:
+    """기본 설정으로 앙상블 시스템 생성"""
+    config = EnsembleConfig(
+        method="quality_weighted",
+        quality_threshold=0.7,
+        confidence_threshold=0.5,
+        max_models=8,
+        use_mps=True,
+        memory_efficient=True
+    )
+    return ClothSegmentationEnsembleSystem(config)
+
+# 동기 앙상블 실행 함수 추가 (import 호환성을 위해)
+def _run_hybrid_ensemble_sync(model_outputs: List[torch.Tensor], 
+                              confidences: List[float] = None,
+                              quality_scores: List[float] = None,
+                              config: EnsembleConfig = None) -> torch.Tensor:
     """
-    앙상블 결과 결합 (개선된 버전)
+    동기 앙상블 실행 함수 (import 호환성)
     
     Args:
-        results: 개별 모델 결과들
-        methods_used: 사용된 모델들
-        execution_times: 실행 시간들
-        image: 원본 이미지
-        person_parsing: 인체 파싱 결과
+        model_outputs: 각 모델의 출력 (List[torch.Tensor])
+        confidences: 각 모델의 신뢰도 (List[float])
+        quality_scores: 각 모델의 품질 점수 (List[float])
+        config: 앙상블 설정
+    
+    Returns:
+        앙상블된 의류 분할 결과
+    """
+    try:
+        # 기본 설정 사용
+        if config is None:
+            config = EnsembleConfig()
         
+        # 앙상블 시스템 생성
+        ensemble = ClothSegmentationEnsembleSystem(config)
+        
+        # 앙상블 실행
+        result = ensemble(model_outputs, confidences, quality_scores)
+        
+        return result
+        
+    except Exception as e:
+        logger.error(f"동기 앙상블 실행 실패: {e}")
+        # 오류 시 첫 번째 출력 반환
+        if model_outputs:
+            return model_outputs[0]
+        else:
+            # 빈 출력 생성
+            if TORCH_AVAILABLE:
+                return torch.zeros(1, 1, 256, 256)
+            else:
+                return None
+
+# _combine_ensemble_results 함수 추가 (import 호환성을 위해)
+def _combine_ensemble_results(model_outputs: List[torch.Tensor], 
+                             confidences: List[float] = None,
+                             quality_scores: List[float] = None,
+                             method: str = "quality_weighted") -> torch.Tensor:
+    """
+    앙상블 결과 결합 함수 (import 호환성)
+    
+    Args:
+        model_outputs: 각 모델의 출력 (List[torch.Tensor])
+        confidences: 각 모델의 신뢰도 (List[float])
+        quality_scores: 각 모델의 품질 점수 (List[float])
+        method: 앙상블 방법
+    
     Returns:
         결합된 결과
     """
     try:
-        logger.info("🔥 앙상블 결과 결합 시작")
+        if not model_outputs:
+            raise ValueError("모델 출력이 비어있습니다")
         
-        if len(results) == 1:
-            # 단일 모델 결과 반환
-            result = results[0]
-            result['ensemble_methods'] = methods_used
-            result['ensemble_times'] = execution_times
-            return result
+        # 기본값 설정
+        if confidences is None:
+            confidences = [1.0] * len(model_outputs)
+        if quality_scores is None:
+            quality_scores = [1.0] * len(model_outputs)
         
-        # 다중 모델 결과 결합 (개선된 가중치 계산)
-        combined_masks = {}
-        combined_confidence = 0.0
-        total_weight = 0.0
-        
-        # 모델별 가중치 계산 (개선된 버전)
-        model_weights = []
-        for i, (result, method, exec_time) in enumerate(zip(results, methods_used, execution_times)):
-            # 1. 신뢰도 기반 가중치 (0.3)
-            confidence = result.get('confidence', 0.5)
-            confidence_weight = confidence * 0.3
-            
-            # 2. 실행 시간 기반 가중치 (0.2) - 빠른 모델에 보너스
-            time_weight = 1.0 / (exec_time + 1e-6) * 0.2
-            
-            # 3. 모델 타입별 가중치 (0.3)
-            type_weight = 0.0
-            if 'deeplabv3' in method.lower():
-                type_weight = 1.0 * 0.3  # 최고 가중치
-            elif 'sam' in method.lower():
-                type_weight = 0.9 * 0.3  # 높은 가중치
-            elif 'u2net' in method.lower():
-                type_weight = 0.8 * 0.3  # 중간 가중치
+        # 모든 출력을 동일한 형태로 변환
+        outputs = []
+        for output in model_outputs:
+            if TORCH_AVAILABLE and isinstance(output, torch.Tensor):
+                outputs.append(output.detach().cpu().numpy())
             else:
-                type_weight = 0.5 * 0.3  # 기본 가중치
-            
-            # 4. 결과 품질 기반 가중치 (0.2)
-            quality_weight = 0.0
-            if 'masks' in result and result['masks']:
-                # 마스크 품질 평가
-                mask_quality = self._evaluate_mask_quality(result['masks'], image)
-                quality_weight = mask_quality * 0.2
-            
-            # 총 가중치 계산
-            total_model_weight = confidence_weight + time_weight + type_weight + quality_weight
-            model_weights.append(total_model_weight)
-            total_weight += total_model_weight
+                outputs.append(np.array(output))
         
-        # 가중치 정규화
-        if total_weight > 0:
-            normalized_weights = [w / total_weight for w in model_weights]
+        # 앙상블 방법에 따른 결합
+        if method == "simple_average":
+            # 단순 평균
+            combined = np.mean(outputs, axis=0)
+        elif method == "weighted_average":
+            # 가중 평균 (신뢰도 기반)
+            weights = np.array(confidences)
+            weights = weights / np.sum(weights)  # 정규화
+            combined = np.average(outputs, axis=0, weights=weights)
+        elif method == "quality_weighted":
+            # 품질 기반 가중 평균
+            weights = np.array(quality_scores)
+            weights = weights / np.sum(weights)  # 정규화
+            combined = np.average(outputs, axis=0, weights=weights)
         else:
-            normalized_weights = [1.0 / len(results)] * len(results)
+            # 기본값: 단순 평균
+            combined = np.mean(outputs, axis=0)
         
-        # 가중 평균으로 결과 결합
-        for i, result in enumerate(results):
-            weight = normalized_weights[i]
+        # torch 텐서로 변환 (가능한 경우)
+        if TORCH_AVAILABLE:
+            return torch.from_numpy(combined).float()
+        else:
+            return combined
             
-            if 'masks' in result:
-                for mask_type, mask in result['masks'].items():
-                    if mask_type not in combined_masks:
-                        combined_masks[mask_type] = np.zeros_like(mask, dtype=np.float32)
-                    combined_masks[mask_type] += mask.astype(np.float32) * weight
-            
-            if 'confidence' in result:
-                combined_confidence += result['confidence'] * weight
-        
-        # 마스크 정규화 및 임계값 적용
-        for mask_type in combined_masks:
-            combined_masks[mask_type] = (combined_masks[mask_type] > 0.5).astype(np.uint8)
-        
-        # 후처리 적용
-        refined_masks = self._apply_ensemble_postprocessing(combined_masks, image)
-        
-        # 최종 결과 생성
-        final_result = {
-            'success': True,
-            'masks': refined_masks,
-            'confidence': combined_confidence,
-            'ensemble_methods': methods_used,
-            'ensemble_times': execution_times,
-            'ensemble_weights': normalized_weights,
-            'ensemble_count': len(results),
-            'method': 'hybrid_ensemble'
-        }
-        
-        logger.info(f"🔥 앙상블 결과 결합 완료 (가중치: {normalized_weights})")
-        return final_result
-        
     except Exception as e:
-        logger.error(f"❌ 앙상블 결과 결합 실패: {e}")
-        return self._create_fallback_segmentation_result(image.shape)
-
-def _calculate_adaptive_threshold(
-    self, 
-    ensemble_mask: np.ndarray, 
-    image: np.ndarray
-) -> float:
-    """
-    적응형 임계값 계산
-    
-    Args:
-        ensemble_mask: 앙상블 마스크
-        image: 원본 이미지
-        
-    Returns:
-        적응형 임계값
-    """
-    try:
-        # 이미지 통계 계산
-        gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY) if len(image.shape) == 3 else image
-        mean_intensity = np.mean(gray)
-        std_intensity = np.std(gray)
-        
-        # 마스크 통계 계산
-        mask_mean = np.mean(ensemble_mask) if ensemble_mask.size > 0 else 0.5
-        mask_std = np.std(ensemble_mask) if ensemble_mask.size > 0 else 0.1
-        
-        # 적응형 임계값 계산
-        base_threshold = 0.5
-        intensity_factor = (mean_intensity - 128) / 128  # -1 to 1
-        contrast_factor = (std_intensity - 50) / 50      # -1 to 1
-        
-        adaptive_threshold = base_threshold + intensity_factor * 0.1 + contrast_factor * 0.05
-        
-        # 범위 제한
-        adaptive_threshold = np.clip(adaptive_threshold, 0.3, 0.7)
-        
-        logger.debug(f"적응형 임계값: {adaptive_threshold:.3f}")
-        return adaptive_threshold
-        
-    except Exception as e:
-        logger.warning(f"적응형 임계값 계산 실패: {e}")
-        return 0.5
-
-def _apply_ensemble_postprocessing(
-    self, 
-    mask: np.ndarray, 
-    image: np.ndarray
-) -> np.ndarray:
-    """
-    앙상블 후처리 적용
-    
-    Args:
-        mask: 원본 마스크
-        image: 원본 이미지
-        
-    Returns:
-        후처리된 마스크
-    """
-    try:
-        logger.debug("앙상블 후처리 시작")
-        
-        # 노이즈 제거
-        kernel = np.ones((3, 3), np.uint8)
-        mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
-        mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
-        
-        # 경계 정제
-        mask = cv2.GaussianBlur(mask.astype(np.float32), (3, 3), 0)
-        mask = (mask > 0.5).astype(np.uint8)
-        
-        # 홀 채우기
-        mask = cv2.fillPoly(mask, [cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)[0][0]], 1)
-        
-        logger.debug("앙상블 후처리 완료")
-        return mask
-        
-    except Exception as e:
-        logger.warning(f"앙상블 후처리 실패: {e}")
-        return mask
-
-def _run_u2net_segmentation(
-    self,
-    image: np.ndarray,
-    person_parsing: Dict[str, Any],
-    pose_info: Dict[str, Any]
-) -> Dict[str, Any]:
-    """U2Net 세그멘테이션 실행"""
-    try:
-        if 'u2net_cloth' not in self.segmentation_models:
-            return None
-        
-        model = self.segmentation_models['u2net_cloth']
-        result = model.predict(image)
-        
-        if result and result.get('success', False):
-            result['method'] = 'u2net_cloth'
-            return result
-        
-        return None
-        
-    except Exception as e:
-        logger.error(f"U2Net 세그멘테이션 실패: {e}")
-        return None
-
-def _run_sam_segmentation(
-    self,
-    image: np.ndarray,
-    person_parsing: Dict[str, Any],
-    pose_info: Dict[str, Any]
-) -> Dict[str, Any]:
-    """SAM 세그멘테이션 실행"""
-    try:
-        if 'sam_huge' not in self.segmentation_models:
-            return None
-        
-        model = self.segmentation_models['sam_huge']
-        
-        # SAM 프롬프트 생성
-        prompts = self._generate_sam_prompts(image, person_parsing, pose_info)
-        
-        result = model.predict(image, prompts)
-        
-        if result and result.get('success', False):
-            result['method'] = 'sam_huge'
-            return result
-        
-        return None
-        
-    except Exception as e:
-        logger.error(f"SAM 세그멘테이션 실패: {e}")
-        return None
-
-def _run_deeplabv3plus_segmentation(
-    self,
-    image: np.ndarray,
-    person_parsing: Dict[str, Any],
-    pose_info: Dict[str, Any]
-) -> Dict[str, Any]:
-    """DeepLabV3+ 세그멘테이션 실행"""
-    try:
-        if 'deeplabv3plus' not in self.segmentation_models:
-            return None
-        
-        model = self.segmentation_models['deeplabv3plus']
-        result = model.predict(image)
-        
-        if result and result.get('success', False):
-            result['method'] = 'deeplabv3plus'
-            return result
-        
-        return None
-        
-    except Exception as e:
-        logger.error(f"DeepLabV3+ 세그멘테이션 실패: {e}")
-        return None
-
-def _generate_sam_prompts(
-    self,
-    image: np.ndarray,
-    person_parsing: Dict[str, Any],
-    pose_info: Dict[str, Any]
-) -> Dict[str, Any]:
-    """SAM 프롬프트 생성"""
-    try:
-        prompts = {
-            'points': [],
-            'boxes': [],
-            'masks': []
-        }
-        
-        # 인체 파싱에서 의류 영역 추출
-        if 'parsing_map' in person_parsing:
-            parsing_map = person_parsing['parsing_map']
-            
-            # 의류 카테고리들 (상의, 하의, 전신)
-            clothing_categories = [1, 2, 3, 4, 5, 6, 7, 9, 10, 11]
-            
-            for category in clothing_categories:
-                if category in parsing_map:
-                    mask = (parsing_map == category).astype(np.uint8)
-                    
-                    # 컨투어 찾기
-                    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-                    
-                    for contour in contours:
-                        if cv2.contourArea(contour) > 100:  # 최소 면적
-                            # 바운딩 박스 추가
-                            x, y, w, h = cv2.boundingRect(contour)
-                            prompts['boxes'].append([x, y, x + w, y + h])
-                            
-                            # 중심점 추가
-                            M = cv2.moments(contour)
-                            if M["m00"] != 0:
-                                cx = int(M["m10"] / M["m00"])
-                                cy = int(M["m01"] / M["m00"])
-                                prompts['points'].append([cx, cy])
-        
-        return prompts
-        
-    except Exception as e:
-        logger.warning(f"SAM 프롬프트 생성 실패: {e}")
-        return {'points': [], 'boxes': [], 'masks': []}
-
-def _evaluate_mask_quality(self, masks: Dict[str, np.ndarray], image: np.ndarray) -> float:
-    """마스크 품질 평가"""
-    try:
-        if not masks:
-            return 0.5
-        
-        total_quality = 0.0
-        mask_count = 0
-        
-        for mask_type, mask in masks.items():
-            if mask is None or mask.size == 0:
-                continue
-            
-            # 1. 면적 비율 평가
-            area_ratio = np.sum(mask) / mask.size
-            area_score = min(area_ratio * 10, 1.0)  # 적절한 면적 비율에 높은 점수
-            
-            # 2. 경계 품질 평가
-            edges = cv2.Canny(mask.astype(np.uint8) * 255, 50, 150)
-            edge_density = np.sum(edges) / (edges.size * 255)
-            edge_score = 1.0 - min(edge_density * 5, 1.0)  # 낮은 edge density에 높은 점수
-            
-            # 3. 연결성 평가
-            contours, _ = cv2.findContours(mask.astype(np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-            connectivity_score = 1.0 / (len(contours) + 1)  # 컨투어가 적을수록 좋음
-            
-            # 4. 원형도 평가
-            if contours:
-                largest_contour = max(contours, key=cv2.contourArea)
-                contour_area = cv2.contourArea(largest_contour)
-                contour_perimeter = cv2.arcLength(largest_contour, True)
-                
-                if contour_perimeter > 0:
-                    circularity = 4 * np.pi * contour_area / (contour_perimeter ** 2)
-                else:
-                    circularity = 0.0
+        logger.error(f"앙상블 결과 결합 실패: {e}")
+        # 오류 시 첫 번째 출력 반환
+        if model_outputs:
+            if TORCH_AVAILABLE and isinstance(model_outputs[0], torch.Tensor):
+                return model_outputs[0]
             else:
-                circularity = 0.0
-            
-            # 종합 품질 점수
-            quality_score = (area_score * 0.3 + edge_score * 0.3 + 
-                           connectivity_score * 0.2 + circularity * 0.2)
-            
-            total_quality += quality_score
-            mask_count += 1
+                return np.array(model_outputs[0])
+        else:
+            # 빈 출력 생성
+            if TORCH_AVAILABLE:
+                return torch.zeros(1, 1, 256, 256)
+            else:
+                return np.zeros((1, 1, 256, 256))
+
+# _calculate_adaptive_threshold 함수 추가 (import 호환성을 위해)
+def _calculate_adaptive_threshold(confidences: List[float], 
+                                quality_scores: List[float] = None,
+                                base_threshold: float = 0.5) -> float:
+    """
+    적응형 임계값 계산 함수 (import 호환성)
+    
+    Args:
+        confidences: 각 모델의 신뢰도 리스트
+        quality_scores: 각 모델의 품질 점수 리스트
+        base_threshold: 기본 임계값
+    
+    Returns:
+        계산된 적응형 임계값
+    """
+    try:
+        if not confidences:
+            return base_threshold
         
-        return total_quality / mask_count if mask_count > 0 else 0.5
+        # 신뢰도 기반 임계값
+        confidence_threshold = np.mean(confidences) * 0.8
+        
+        # 품질 점수 기반 임계값 (있는 경우)
+        if quality_scores and len(quality_scores) == len(confidences):
+            quality_threshold = np.mean(quality_scores) * 0.7
+            # 신뢰도와 품질 점수의 가중 평균
+            adaptive_threshold = 0.6 * confidence_threshold + 0.4 * quality_threshold
+        else:
+            adaptive_threshold = confidence_threshold
+        
+        # 기본 임계값과 비교하여 적절한 범위 내로 제한
+        final_threshold = np.clip(adaptive_threshold, base_threshold * 0.5, base_threshold * 1.5)
+        
+        return float(final_threshold)
         
     except Exception as e:
-        logger.warning(f"마스크 품질 평가 실패: {e}")
-        return 0.5
+        logger.warning(f"적응형 임계값 계산 실패: {e}, 기본값 사용")
+        return base_threshold
+
+# _apply_ensemble_postprocessing 함수 추가 (import 호환성을 위해)
+def _apply_ensemble_postprocessing(ensemble_output: torch.Tensor,
+                                 individual_outputs: List[torch.Tensor],
+                                 confidences: List[float] = None,
+                                 method: str = "quality_weighted") -> torch.Tensor:
+    """
+    앙상블 후처리 적용 함수 (import 호환성)
+    
+    Args:
+        ensemble_output: 앙상블 결과
+        individual_outputs: 개별 모델 출력
+        confidences: 각 모델의 신뢰도
+        method: 후처리 방법
+    
+    Returns:
+        후처리된 결과
+    """
+    try:
+        if not individual_outputs:
+            return ensemble_output
+        
+        # 기본값 설정
+        if confidences is None:
+            confidences = [1.0] * len(individual_outputs)
+        
+        # 후처리 방법에 따른 처리
+        if method == "confidence_weighted":
+            # 신뢰도 기반 가중 평균
+            weights = np.array(confidences)
+            weights = weights / np.sum(weights)  # 정규화
+            
+            # 모든 출력을 동일한 형태로 변환
+            outputs = []
+            for output in individual_outputs:
+                if TORCH_AVAILABLE and isinstance(output, torch.Tensor):
+                    outputs.append(output.detach().cpu().numpy())
+                else:
+                    outputs.append(np.array(output))
+            
+            # 가중 평균 계산
+            weighted_output = np.average(outputs, axis=0, weights=weights)
+            
+            # torch 텐서로 변환 (가능한 경우)
+            if TORCH_AVAILABLE:
+                return torch.from_numpy(weighted_output).float()
+            else:
+                return weighted_output
+                
+        elif method == "quality_enhancement":
+            # 품질 향상 후처리
+            if TORCH_AVAILABLE and isinstance(ensemble_output, torch.Tensor):
+                # 간단한 품질 향상: 노이즈 제거
+                enhanced = ensemble_output.clone()
+                # 임계값 기반 필터링
+                threshold = 0.1
+                enhanced[enhanced < threshold] = 0
+                return enhanced
+            else:
+                # numpy 배열인 경우
+                enhanced = np.array(ensemble_output).copy()
+                threshold = 0.1
+                enhanced[enhanced < threshold] = 0
+                return enhanced
+                
+        else:
+            # 기본값: 원본 앙상블 출력 반환
+            return ensemble_output
+            
+    except Exception as e:
+        logger.error(f"앙상블 후처리 적용 실패: {e}")
+        # 오류 시 원본 출력 반환
+        return ensemble_output
+
+if __name__ == "__main__":
+    # 테스트 코드
+    logging.basicConfig(level=logging.INFO)
+    
+    # 앙상블 시스템 생성
+    ensemble = create_default_ensemble()
+    
+    # 테스트 데이터 생성
+    batch_size, channels, height, width = 2, 1, 256, 256
+    test_outputs = [
+        torch.randn(batch_size, channels, height, width) for _ in range(4)
+    ]
+    
+    # 앙상블 수행
+    result = ensemble(test_outputs)
+    print(f"앙상블 결과 형태: {result.shape}")
+    print(f"품질 메트릭: {ensemble.get_quality_metrics()}")
+    print(f"앙상블 정보: {ensemble.get_ensemble_info()}")

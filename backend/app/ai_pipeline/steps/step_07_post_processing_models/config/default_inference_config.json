@@ -1,0 +1,41 @@
+{
+  "swinir": {
+    "tile_size": 400,
+    "tile_pad": 10,
+    "pre_pad": 0,
+    "half": true,
+    "img_range": 1.0,
+    "window_size": 7
+  },
+  "realesrgan": {
+    "tile_size": 400,
+    "tile_pad": 10,
+    "pre_pad": 0,
+    "half": true,
+    "outscale": 4,
+    "alpha_upsampler": "realesrgan",
+    "face_enhance": false
+  },
+  "gfpgan": {
+    "bg_upsampler": true,
+    "bg_tile": 400,
+    "suffix": null,
+    "only_center_face": false,
+    "aligned": false,
+    "weight": 0.5
+  },
+  "codeformer": {
+    "background_enhance": true,
+    "face_upsample": true,
+    "upscale": 2,
+    "codeformer_fidelity": 0.7,
+    "weight": 0.5
+  },
+  "batch_size": 1,
+  "num_workers": 0,
+  "pin_memory": true,
+  "device": "auto",
+  "max_memory_usage": 0.8,
+  "enable_tiling": true,
+  "tile_size_threshold": 1024
+}

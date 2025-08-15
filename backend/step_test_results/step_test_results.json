@@ -1,0 +1,42 @@
+{
+  "total_steps": 6,
+  "successful_steps": 0,
+  "failed_steps": 6,
+  "success_rate": 0.0,
+  "step_results": {
+    "human_parsing": {
+      "success": false,
+      "error": "'HumanParsingStep' object has no attribute 'ensemble_methods'",
+      "step_name": "human_parsing",
+      "traceback": "Traceback (most recent call last):\n  File \"/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/steps/test_step_by_step.py\", line 95, in test_step_01_human_parsing\n    model_status = step.get_model_status()\n  File \"/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/steps/step_01_human_parsing_models/step_01_human_parsing.py\", line 499, in get_model_status\n    'ensemble_methods': self.ensemble_methods,\nAttributeError: 'HumanParsingStep' object has no attribute 'ensemble_methods'\n"
+    },
+    "pose_estimation": {
+      "success": false,
+      "error": "PoseEstimationStep import 실패",
+      "step_name": "pose_estimation"
+    },
+    "cloth_segmentation": {
+      "success": false,
+      "error": "ClothSegmentationStep import 실패",
+      "step_name": "cloth_segmentation"
+    },
+    "geometric_matching": {
+      "success": false,
+      "error": "process() missing 1 required positional argument: 'input_data'",
+      "step_name": "geometric_matching",
+      "traceback": "Traceback (most recent call last):\n  File \"/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/steps/test_step_by_step.py\", line 274, in test_step_04_geometric_matching\n    result = step.process(\nTypeError: process() missing 1 required positional argument: 'input_data'\n"
+    },
+    "cloth_warping": {
+      "success": false,
+      "error": "process() missing 1 required positional argument: 'input_data'",
+      "step_name": "cloth_warping",
+      "traceback": "Traceback (most recent call last):\n  File \"/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/steps/test_step_by_step.py\", line 335, in test_step_05_cloth_warping\n    result = step.process(\nTypeError: process() missing 1 required positional argument: 'input_data'\n"
+    },
+    "virtual_fitting": {
+      "success": false,
+      "error": "process() missing 1 required positional argument: 'input_data'",
+      "step_name": "virtual_fitting",
+      "traceback": "Traceback (most recent call last):\n  File \"/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/steps/test_step_by_step.py\", line 396, in test_step_06_virtual_fitting\n    result = step.process(\nTypeError: process() missing 1 required positional argument: 'input_data'\n"
+    }
+  }
+}

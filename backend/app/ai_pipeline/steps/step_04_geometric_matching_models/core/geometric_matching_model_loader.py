@@ -9,12 +9,13 @@ import time
 from typing import Dict, Any, Optional, List
 from pathlib import Path
 
-from ..models import (
-    CompleteAdvancedGeometricMatchingAI,
-    GeometricMatchingModule,
-    OpticalFlowNetwork,
-    KeypointMatchingNetwork
-)
+# 순환 import 방지를 위해 지연 import 사용
+# from ..models import (
+#     CompleteAdvancedGeometricMatchingAI,
+#     GeometricMatchingModule,
+#     OpticalFlowNetwork,
+#     KeypointMatchingNetwork
+# )
 
 logger = logging.getLogger(__name__)
 
@@ -68,11 +69,13 @@ class GeometricMatchingModelLoader:
         try:
             self.logger.info("🔄 고급 기하학적 AI 모델 로딩 시작...")
             
+            # 순환 import 방지를 위해 지연 import
+            from ..models import CompleteAdvancedGeometricMatchingAI
+            
             # 모델 생성
             step_instance.advanced_ai_models = {}
             step_instance.advanced_ai_models['complete_advanced'] = CompleteAdvancedGeometricMatchingAI(
                 input_nc=6,
-                num_keypoints=20,
                 initialize_weights=True
             )
             
@@ -96,6 +99,9 @@ class GeometricMatchingModelLoader:
         """GMM 모델 로딩"""
         try:
             self.logger.info("🔄 GMM 모델 로딩 시작...")
+            
+            # 순환 import 방지를 위해 지연 import
+            from ..models import GeometricMatchingModule
             
             # 모델 생성
             step_instance.geometric_matching_models = {}
@@ -122,6 +128,9 @@ class GeometricMatchingModelLoader:
         try:
             self.logger.info("🔄 광학 흐름 모델 로딩 시작...")
             
+            # 순환 import 방지를 위해 지연 import
+            from ..models import OpticalFlowNetwork
+            
             # 모델 생성
             step_instance.geometric_matching_models['optical_flow'] = OpticalFlowNetwork(
                 feature_dim=256,
@@ -144,6 +153,9 @@ class GeometricMatchingModelLoader:
         """키포인트 매처 로딩"""
         try:
             self.logger.info("🔄 키포인트 매처 로딩 시작...")
+            
+            # 순환 import 방지를 위해 지연 import
+            from ..models import KeypointMatchingNetwork
             
             # 모델 생성
             step_instance.geometric_matching_models['keypoint_matcher'] = KeypointMatchingNetwork(

@@ -24,12 +24,12 @@ from PIL import Image
 
 # 메인 BaseStepMixin import
 try:
-    from app.ai_pipeline.steps.base.base_step_mixin import BaseStepMixin
+    from app.ai_pipeline.steps.base.core.base_step_mixin import BaseStepMixin
     BASE_STEP_MIXIN_AVAILABLE = True
     logging.info("✅ 메인 BaseStepMixin import 성공")
 except ImportError:
     try:
-        from ..base.base_step_mixin import BaseStepMixin
+        from ..base.core.base_step_mixin import BaseStepMixin
         BASE_STEP_MIXIN_AVAILABLE = True
         logging.info("✅ 상대 경로로 BaseStepMixin import 성공")
     except ImportError:

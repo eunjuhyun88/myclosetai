@@ -1504,7 +1504,7 @@ class ProjectStepMapping:
                     step_name="HumanParsingStep",
                     step_id=1,
                     class_name="HumanParsingStep",
-                    module_path="app.ai_pipeline.steps.step_01_human_parsing",
+                    module_path="app.ai_pipeline.steps.step_01_human_parsing_models.step_01_human_parsing",
                     step_type=StepType.HUMAN_PARSING,
                     priority=StepPriority.HIGH,
                     ai_models=[
@@ -1526,7 +1526,7 @@ class ProjectStepMapping:
                     step_name="PoseEstimationStep",
                     step_id=2,
                     class_name="PoseEstimationStep",
-                    module_path="app.ai_pipeline.steps.step_02_pose_estimation",
+                    module_path="app.ai_pipeline.steps.step_02_pose_estimation_models.step_02_pose_estimation",
                     step_type=StepType.POSE_ESTIMATION,
                     priority=StepPriority.MEDIUM,
                     ai_models=[
@@ -1548,7 +1548,7 @@ class ProjectStepMapping:
                     step_name="VirtualFittingStep",
                     step_id=6,
                     class_name="VirtualFittingStep",
-                    module_path="app.ai_pipeline.steps.step_06_virtual_fitting",
+                    module_path="app.ai_pipeline.steps.step_06_virtual_fitting_models.step_06_virtual_fitting",
                     step_type=StepType.VIRTUAL_FITTING,
                     priority=StepPriority.CRITICAL,
                     ai_models=[
@@ -1933,37 +1933,6 @@ __all__ = [
     'get_step_info',
     
     # 호환성 유틸리티 함수들
-    'get_github_environment_info',
-    'get_real_environment_info',
-    'optimize_github_environment',
-    'optimize_real_environment',
-    'validate_github_step_compatibility',
-    'validate_real_step_compatibility',
-    'get_github_step_info',
-    'get_real_step_info',
-    'get_github_step_model_interface',
-    'get_step_interface_class',
-    
-    # 기타 유틸리티
-    'setup_module_aliases',
-    
-    # 상수들
-    'CONDA_INFO',
-    'IS_M3_MAX',
-    'MEMORY_GB',
-    'MPS_AVAILABLE',
-    'PYTORCH_AVAILABLE',
-    'DEVICE',
-    'PROJECT_ROOT',
-    'BACKEND_ROOT',
-    'AI_PIPELINE_ROOT',
-    'AI_MODELS_ROOT',
-    'STEP_ID_TO_NAME_MAPPING',
-    'STEP_NAME_TO_ID_MAPPING',
-    
-    # Logger
-    'logger'
-
     'get_github_environment_info',
     'get_real_environment_info',
     'optimize_github_environment',

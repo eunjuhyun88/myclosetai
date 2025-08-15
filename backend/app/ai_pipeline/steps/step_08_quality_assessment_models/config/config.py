@@ -134,7 +134,6 @@ ASSESSMENT_CONSTANTS = {
         'thorough': 30.0  # 30초
     }
 }
-            return "D"
 
 @dataclass
 class ModelConfig:
@@ -419,3 +418,50 @@ ULTRA_QUALITY_CONFIG = QualityAssessmentConfig(
         gradient_checkpointing=True
     )
 )
+
+# 모델 설정들
+MODEL_CONFIGS = {
+    'default': DEFAULT_CONFIG,
+    'high_quality': HIGH_QUALITY_CONFIG,
+    'ultra_quality': ULTRA_QUALITY_CONFIG
+}
+
+# 품질 평가 모델 클래스 (Mock)
+class QualityAssessmentModel:
+    """품질 평가 모델 (Mock)"""
+    
+    def __init__(self, config=None):
+        self.config = config or DEFAULT_CONFIG
+        self.name = "QualityAssessmentModel"
+        self.version = "1.0.0"
+    
+    def evaluate(self, image, reference=None):
+        """이미지 품질 평가"""
+        return {
+            'quality_score': 0.85,
+            'grade': 'B+',
+            'details': {
+                'sharpness': 0.8,
+                'color': 0.9,
+                'composition': 0.85
+            }
+        }
+
+# 품질 평가 유틸리티 클래스 (Mock)
+class QualityAssessmentUtils:
+    """품질 평가 유틸리티 (Mock)"""
+    
+    @staticmethod
+    def calculate_psnr(image1, image2):
+        """PSNR 계산"""
+        return 30.5
+    
+    @staticmethod
+    def calculate_ssim(image1, image2):
+        """SSIM 계산"""
+        return 0.85
+    
+    @staticmethod
+    def calculate_lpips(image1, image2):
+        """LPIPS 계산"""
+        return 0.15
